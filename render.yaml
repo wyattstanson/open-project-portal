@@ -1,0 +1,22 @@
+# Render Blueprint. In the Render dashboard: New -> Blueprint, point it at this
+# repo, and it reads this file. VAULT_KEY is marked sync:false so Render prompts
+# you to paste it as a secret (it is never stored in git).
+services:
+  - type: web
+    name: open-project-portal
+    runtime: node
+    plan: free
+    region: singapore          # closest to India; change if you prefer
+    buildCommand: npm install   # no dependencies, effectively a no-op
+    startCommand: node portal/portal-server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: VAULT_KEY          # you paste this in the dashboard (secret)
+        sync: false
+      - key: NODE_VERSION
+        value: "20"
+
+# Note on the free plan: its disk is ephemeral, so data/db.json resets to the
+# seeded sample whenever the service restarts. Because VAULT_KEY is a stable
+# env var, encryption still works across restarts. For durable data, upgrade the
+# instance and attach a Disk mounted at portal/data (see DEPLOY.md).

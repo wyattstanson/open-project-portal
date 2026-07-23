@@ -1,0 +1,12 @@
+# secrets and generated data (never commit these)
+.env
+portal/data/db.json
+portal/data/.vault_key
+
+# vercel link for the separate static tool
+.vercel
+deploy/.vercel
+
+# misc
+node_modules
+*.log

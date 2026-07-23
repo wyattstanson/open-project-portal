@@ -1,0 +1,6 @@
+node_modules
+deploy
+portal/data/db.json
+portal/data/.vault_key
+.git
+*.log
