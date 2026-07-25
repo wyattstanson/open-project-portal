@@ -37,9 +37,26 @@ function load() {
   try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
   catch (e) { return seed(); }
 }
-function persist() {
+function persistNow() {
   fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  fs.writeFileSync(DB_FILE, JSON.stringify(db));
+}
+// Non-blocking, coalesced persistence. With a 10k-record db.json, rewriting the
+// whole file on every accept would block the event loop; instead we mark the
+// store dirty and flush at most once every 400ms, off the request path. For a
+// truly large deployment this JSON store is swapped for SQLite/Postgres, but the
+// server code above it does not change (same read/write calls).
+let dirty = false, flushQueued = false;
+function persist() {
+  dirty = true;
+  if (flushQueued) return;
+  flushQueued = true;
+  setTimeout(() => {
+    flushQueued = false;
+    if (!dirty) return;
+    dirty = false;
+    fs.promises.writeFile(DB_FILE, JSON.stringify(db)).catch(() => {});
+  }, 400);
 }
 
 // ---- seed the store on first run, from data/sample-students.csv if present ----
@@ -60,7 +77,19 @@ function seed() {
 
 // initialise the store (seeds + writes db.json on first run)
 let db = load();
-if (!fs.existsSync(DB_FILE)) persist();
+if (!fs.existsSync(DB_FILE)) persistNow();
+
+// O(1) login lookup: emailHash -> student. Built once at startup so a login on
+// a 10,000-row roster is a single hash-map hit, not a scan of every record.
+const emailIndex = new Map();
+function reindex() {
+  emailIndex.clear();
+  for (const reg in db.students) {
+    const s = db.students[reg];
+    if (s.emailHash) emailIndex.set(s.emailHash, s);
+  }
+}
+reindex();
 
 // ---------------------------------------------------------------- helpers
 function findFaculty(email) { return db.faculty.find((f) => f.email.toLowerCase() === String(email).toLowerCase()); }
@@ -72,8 +101,7 @@ function auth(req) {
 function facultyAuth(req) { const s = auth(req); return s && s.role === 'faculty' ? s : null; }
 function studentAuth(req) { const s = auth(req); return s && s.role === 'student' ? s : null; }
 function findStudentByEmail(email) {
-  const h = vault.hashEmail(email);
-  return Object.values(db.students).find((s) => s.emailHash === h) || null;
+  return emailIndex.get(vault.hashEmail(email)) || null;   // O(1)
 }
 function seatsUsed(email) { return db.groups.filter((g) => g.status === 'accepted' && g.faculty === email).length; }
 
@@ -190,15 +218,31 @@ const server = http.createServer(async (req, res) => {
     return sendJSON(res, 200, { ok: true, group: groupView(g, { reveal: true }), seatsUsed: seatsUsed(f.email), capacity: f.capacity });
   }
 
-  // ---- STUDENT login (email only): issues a token bound to their reg ----
+  // ---- STUDENT login (email + password): verifies the scrypt hash ----
   if (p === '/api/student/login' && req.method === 'POST') {
-    const { email } = await readBody(req);
+    const { email, password } = await readBody(req);
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) return sendJSON(res, 400, { error: 'Enter a valid email.' });
     const st = findStudentByEmail(email);
-    if (!st) return sendJSON(res, 404, { error: 'No student on record with that email. Ask your coordinator to add you.' });
+    // same generic message whether the email is unknown or the password is wrong,
+    // so an attacker cannot tell which emails exist
+    if (!st || !st.passwordHash || !vault.verifyPassword(password || '', st.passwordHash)) {
+      return sendJSON(res, 401, { error: 'Incorrect email or password.' });
+    }
     const tok = vault.newToken();
     sessions.set(tok, { role: 'student', reg: st.reg, name: st.name });
-    return sendJSON(res, 200, { token: tok, reg: st.reg, name: st.name, school: st.school });
+    return sendJSON(res, 200, { token: tok, reg: st.reg, name: st.name, school: st.school, changedPassword: !!st.changedPassword });
+  }
+
+  // ---- STUDENT change password (writes a new one-way hash) ----
+  if (p === '/api/student/password' && req.method === 'POST') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in first.' });
+    const st = db.students[sess.reg]; if (!st) return sendJSON(res, 404, { error: 'Account not found.' });
+    const { currentPassword, newPassword } = await readBody(req);
+    if (!vault.verifyPassword(currentPassword || '', st.passwordHash)) return sendJSON(res, 403, { error: 'Current password is incorrect.' });
+    if (!newPassword || String(newPassword).length < 6) return sendJSON(res, 400, { error: 'New password must be at least 6 characters.' });
+    st.passwordHash = vault.hashPassword(newPassword);   // old password is unrecoverable
+    st.changedPassword = true; persist();
+    return sendJSON(res, 200, { ok: true });
   }
 
   // ---- STUDENT: only THEIR OWN group(s); own email real, teammates masked ----

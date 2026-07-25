@@ -55,10 +55,13 @@ function loadFromCSV(file, opts) {
     const name = (iName >= 0 ? cols[iName] : '').trim();
     const email = (iEmail >= 0 ? cols[iEmail] : '').trim();
     const info = engine.schoolOf(p.code, MAP);
+    const pw = (name || p.reg).toLowerCase().replace(/[^a-z0-9]/g, '');  // initial password: full name, no spaces
     students[p.reg] = {
       reg: p.reg, name, school: info.school, scope: info.scope,
       email: email ? vault.encrypt(email) : null,          // encrypted at rest
       emailHash: email ? vault.hashEmail(email) : null,     // for login lookup
+      passwordHash: vault.hashPassword(pw),                 // scrypt, one-way
+      changedPassword: false,
     };
     order.push(p.reg);
   }
