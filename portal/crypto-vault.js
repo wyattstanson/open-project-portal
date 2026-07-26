@@ -28,7 +28,31 @@ function loadKey() {
   fs.writeFileSync(KEY_FILE, k.toString('hex'), { mode: 0o600 });
   return k;
 }
-const KEY = loadKey();
+let KEY = loadKey();
+
+function tryDecrypt(blob, key) {
+  try {
+    const [ivb, tagb, ctb] = String(blob).split(':');
+    const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivb, 'base64'));
+    d.setAuthTag(Buffer.from(tagb, 'base64'));
+    return Buffer.concat([d.update(Buffer.from(ctb, 'base64')), d.final()]).toString('utf8');
+  } catch (e) { return null; }
+}
+
+// Self-healing key selection: given a known ciphertext from the database, pick
+// whichever available key (env var, committed .vault_key file, or the current
+// one) actually decrypts it. This makes a deploy work even if VAULT_KEY is set
+// to the wrong value, because the key that matches the data always wins.
+function selectKeyFor(sampleBlob) {
+  if (!sampleBlob) return false;
+  const cands = [KEY];
+  if (process.env.VAULT_KEY) { try { cands.push(Buffer.from(process.env.VAULT_KEY, 'hex')); } catch (e) {} }
+  try { cands.push(Buffer.from(fs.readFileSync(KEY_FILE, 'utf8').trim(), 'hex')); } catch (e) {}
+  for (const k of cands) {
+    if (k.length === 32 && tryDecrypt(sampleBlob, k) !== null) { KEY = k; return true; }
+  }
+  return false;
+}
 
 // Encrypt a string -> "iv:tag:ciphertext" (all base64). Backend only.
 function encrypt(plain) {
@@ -77,4 +101,4 @@ function verifyPassword(pw, stored) {
 }
 function newToken() { return crypto.randomBytes(24).toString('hex'); }
 
-module.exports = { encrypt, decrypt, mask, hashEmail, hashPassword, verifyPassword, newToken };
+module.exports = { encrypt, decrypt, mask, hashEmail, hashPassword, verifyPassword, newToken, selectKeyFor };

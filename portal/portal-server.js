@@ -79,6 +79,15 @@ function seed() {
 let db = load();
 if (!fs.existsSync(DB_FILE)) persistNow();
 
+// Lock the vault to whichever key actually decrypts this database, so a wrong
+// or stale VAULT_KEY env var can never break email lookup / login.
+(function lockKey() {
+  const first = Object.values(db.students)[0];
+  if (first && first.email && !vault.selectKeyFor(first.email)) {
+    console.warn('WARNING: no available key decrypts the student emails; check VAULT_KEY / .vault_key');
+  }
+})();
+
 // O(1) login lookup: emailHash -> student. Built once at startup so a login on
 // a 10,000-row roster is a single hash-map hit, not a scan of every record.
 const emailIndex = new Map();
