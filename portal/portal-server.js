@@ -91,6 +91,46 @@ function reindex() {
 }
 reindex();
 
+// The documented INITIAL passwords. We never store plaintext; these are the
+// known defaults, shown to admin (who can also reset an account). Current
+// passwords stay one-way hashed and are unreadable by anyone.
+function initialStudentPw(name) { return String(name).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+function initialFacultyPw(email) {
+  if (email === 'teacher@domain') return 'teach123';
+  const m = String(email).match(/^faculty0*(\d+)@/);
+  return m ? 'faculty' + m[1] : '';
+}
+
+// In-memory, pre-decrypted student array for fast admin/faculty listing + search.
+// Decrypting all emails once at boot (server memory only, never sent to students)
+// turns each search into a linear scan over plain strings instead of 10k AES ops
+// per query. Build: O(n) once. Search: O(n) over ~10k = a few ms.
+let studentArr = [];
+const studentArrByReg = new Map();
+function buildStudentArr() {
+  studentArr = []; studentArrByReg.clear();
+  for (const reg in db.students) {
+    const s = db.students[reg];
+    const e = { reg, name: s.name, school: s.school, scope: s.scope,
+      email: vault.decrypt(s.email) || '', changed: !!s.changedPassword,
+      _hay: (reg + ' ' + s.name).toLowerCase() };
+    studentArr.push(e); studentArrByReg.set(reg, e);
+  }
+}
+buildStudentArr();
+
+// paginate + optional substring search over a pre-lowercased haystack
+function pageOf(arr, q, page, size) {
+  size = Math.min(200, Math.max(1, parseInt(size, 10) || 50));
+  page = Math.max(1, parseInt(page, 10) || 1);
+  let list = arr;
+  const needle = String(q || '').toLowerCase().trim();
+  if (needle) list = arr.filter((e) => e._hay.indexOf(needle) >= 0 || (e.email && e.email.indexOf(needle) >= 0));
+  const total = list.length;
+  const start = (page - 1) * size;
+  return { total, page, size, pages: Math.max(1, Math.ceil(total / size)), rows: list.slice(start, start + size) };
+}
+
 // ---------------------------------------------------------------- helpers
 function findFaculty(email) { return db.faculty.find((f) => f.email.toLowerCase() === String(email).toLowerCase()); }
 function auth(req) {
@@ -100,6 +140,7 @@ function auth(req) {
 }
 function facultyAuth(req) { const s = auth(req); return s && s.role === 'faculty' ? s : null; }
 function studentAuth(req) { const s = auth(req); return s && s.role === 'student' ? s : null; }
+function adminAuth(req) { const s = auth(req); return s && s.role === 'admin' ? s : null; }
 function findStudentByEmail(email) {
   return emailIndex.get(vault.hashEmail(email)) || null;   // O(1)
 }
@@ -241,8 +282,71 @@ const server = http.createServer(async (req, res) => {
     if (!vault.verifyPassword(currentPassword || '', st.passwordHash)) return sendJSON(res, 403, { error: 'Current password is incorrect.' });
     if (!newPassword || String(newPassword).length < 6) return sendJSON(res, 400, { error: 'New password must be at least 6 characters.' });
     st.passwordHash = vault.hashPassword(newPassword);   // old password is unrecoverable
-    st.changedPassword = true; persist();
+    st.changedPassword = true;
+    const ce = studentArrByReg.get(sess.reg); if (ce) ce.changed = true;
+    persist();
     return sendJSON(res, 200, { ok: true });
+  }
+
+  // ---- STUDENT: faculty directory (name, school, slots remaining). No emails. ----
+  if (p === '/api/faculty-directory' && req.method === 'GET') {
+    if (!studentAuth(req)) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const rows = db.faculty.map((f) => {
+      const used = seatsUsed(f.email);
+      return { name: f.name, school: f.school, capacity: f.capacity, slotsRemaining: f.capacity - used };
+    }).sort((a, b) => b.slotsRemaining - a.slotsRemaining);
+    return sendJSON(res, 200, { rows });
+  }
+
+  // ---- FACULTY: searchable, paginated student directory (real emails) ----
+  if (p === '/api/faculty/students' && req.method === 'GET') {
+    if (!facultyAuth(req)) return sendJSON(res, 401, { error: 'Sign in as faculty first.' });
+    const r = pageOf(studentArr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
+    const rows = r.rows.map((e) => ({ reg: e.reg, name: e.name, school: e.school, scope: e.scope, email: e.email }));
+    return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows });
+  }
+
+  // ---- ADMIN login ----
+  if (p === '/api/admin/login' && req.method === 'POST') {
+    const { username, password } = await readBody(req);
+    const a = db.admin;
+    if (!a || String(username || '').toLowerCase() !== a.username || !vault.verifyPassword(password || '', a.passHash)) {
+      return sendJSON(res, 401, { error: 'Incorrect username or password.' });
+    }
+    const tok = vault.newToken();
+    sessions.set(tok, { role: 'admin', username: a.username });
+    return sendJSON(res, 200, { token: tok, username: a.username });
+  }
+
+  // ---- ADMIN: all students, searchable + paginated (email + initial password) ----
+  if (p === '/api/admin/students' && req.method === 'GET') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const r = pageOf(studentArr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
+    const rows = r.rows.map((e) => ({ reg: e.reg, name: e.name, school: e.school, scope: e.scope, email: e.email,
+      initialPassword: e.changed ? null : initialStudentPw(e.name), changed: e.changed }));
+    return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows });
+  }
+
+  // ---- ADMIN: all faculty with slots + initial password ----
+  if (p === '/api/admin/faculty' && req.method === 'GET') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const rows = db.faculty.map((f) => {
+      const used = seatsUsed(f.email);
+      return { email: f.email, name: f.name, school: f.school, capacity: f.capacity, used, remaining: f.capacity - used, initialPassword: initialFacultyPw(f.email) };
+    });
+    return sendJSON(res, 200, { rows });
+  }
+
+  // ---- ADMIN: reset a student to their initial password ----
+  if (p === '/api/admin/reset-password' && req.method === 'POST') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const { reg } = await readBody(req);
+    const s = db.students[reg]; if (!s) return sendJSON(res, 404, { error: 'Student not found.' });
+    const pw = initialStudentPw(s.name);
+    s.passwordHash = vault.hashPassword(pw); s.changedPassword = false;
+    const e = studentArrByReg.get(reg); if (e) e.changed = false;
+    persist();
+    return sendJSON(res, 200, { ok: true, initialPassword: pw });
   }
 
   // ---- STUDENT: only THEIR OWN group(s); own email real, teammates masked ----

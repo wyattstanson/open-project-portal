@@ -1,7 +1,9 @@
-# secrets and generated data (never commit these)
+# real secrets (never commit)
 .env
-portal/data/db.json
-portal/data/.vault_key
+
+# NOTE: portal/data/db.json and portal/data/.vault_key ARE committed on purpose
+# for the demo deploy (synthetic data, private repo). With real data, ignore
+# them again and set VAULT_KEY as a Render secret instead.
 
 # vercel link for the separate static tool
 .vercel
@@ -10,3 +12,7 @@ deploy/.vercel
 # misc
 node_modules
 *.log
+
+# generated presentation exports (regenerate with extract-roster.js)
+portal/data/students-list.csv
+portal/data/faculty-list.csv

@@ -1,6 +1,8 @@
 # Render Blueprint. In the Render dashboard: New -> Blueprint, point it at this
-# repo, and it reads this file. VAULT_KEY is marked sync:false so Render prompts
-# you to paste it as a secret (it is never stored in git).
+# repo, and it reads this file. The encryption key is baked into the repo
+# (portal/data/.vault_key) so the deploy works with ZERO manual env config.
+# This is a demo convenience with synthetic data in a PRIVATE repo; with real
+# data you would instead set VAULT_KEY as a dashboard secret and not commit it.
 services:
   - type: web
     name: open-project-portal
@@ -11,12 +13,10 @@ services:
     startCommand: node portal/portal-server.js
     healthCheckPath: /api/health
     envVars:
-      - key: VAULT_KEY          # you paste this in the dashboard (secret)
-        sync: false
       - key: NODE_VERSION
         value: "20"
 
-# Note on the free plan: its disk is ephemeral, so data/db.json resets to the
-# seeded sample whenever the service restarts. Because VAULT_KEY is a stable
-# env var, encryption still works across restarts. For durable data, upgrade the
-# instance and attach a Disk mounted at portal/data (see DEPLOY.md).
+# Free plan: the disk is ephemeral, so data/db.json resets to the committed
+# 10,000-student database whenever the service restarts. The committed .vault_key
+# keeps email encryption consistent, so it always comes back to a clean state.
+# For durable data, upgrade the instance and attach a Disk at portal/data.

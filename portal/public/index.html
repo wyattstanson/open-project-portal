@@ -101,8 +101,7 @@
   .authcard{width:100%;max-width:390px;}
 
   /* role cards (landing) */
-  .roles{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4);margin-top:var(--s5);}
-  @media(max-width:680px){.roles{grid-template-columns:1fr;}}
+  .roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:var(--s4);margin-top:var(--s5);}
   .role{background:var(--surface);border:1px solid var(--line);border-radius:var(--r3);padding:var(--s5);
     box-shadow:var(--shadow);display:flex;flex-direction:column;transition:.16s;}
   .role:hover{box-shadow:var(--shadow-2);transform:translateY(-2px);border-color:var(--line-2);}
@@ -159,6 +158,26 @@
   .row{display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap;}
   .spread{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;}
   svg.i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;}
+
+  /* tabs */
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:var(--s4);overflow-x:auto;}
+  .tab{padding:9px 15px;font-size:13.5px;font-weight:600;color:var(--ink-2);cursor:pointer;border:none;background:none;
+    border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;font-family:var(--sans);}
+  .tab:hover{color:var(--ink);}
+  .tab.active{color:var(--brand-2);border-bottom-color:var(--brand);}
+  /* search + data tables + pager */
+  .searchrow{display:flex;gap:var(--s3);align-items:center;margin-bottom:var(--s3);flex-wrap:wrap;}
+  .searchrow .input{max-width:320px;}
+  .scrollx{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r2);background:var(--surface);box-shadow:var(--shadow);}
+  .dtable{width:100%;border-collapse:collapse;font-size:13px;min-width:560px;}
+  .dtable th{position:sticky;top:0;background:var(--surface-2);text-align:left;font-size:10.5px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--ink-3);font-weight:700;padding:10px 12px;white-space:nowrap;border-bottom:1px solid var(--line);}
+  .dtable td{padding:9px 12px;border-top:1px solid var(--line);vertical-align:middle;white-space:nowrap;}
+  .dtable td.wrap{white-space:normal;}
+  .dtable tr:hover td{background:var(--surface-2);}
+  .pager{display:flex;align-items:center;gap:12px;margin-top:var(--s3);font-size:13px;color:var(--ink-2);flex-wrap:wrap;}
+  .pager .count{margin-right:auto;}
+  .mini{font-size:12px;color:var(--ink-3);}
 </style>
 </head>
 <body>
@@ -192,12 +211,18 @@
         <div class="role">
           <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M20 7h-8l-2-2H4a2 2 0 00-2 2v11a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/></svg></div>
           <h3>Faculty</h3>
-          <p>Sign in with your staff credentials to review qualifying groups with real contact emails and accept the ones you will mentor, up to your limit of three.</p>
+          <p>Sign in with your staff credentials to review qualifying groups with real contact emails, browse the student directory, and accept up to three teams.</p>
           <div><button class="btn pri" data-go="faculty">Continue as faculty</button></div>
+        </div>
+        <div class="role">
+          <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/></svg></div>
+          <h3>Administrator</h3>
+          <p>Full oversight: every student and faculty account, their emails and initial passwords, remaining faculty slots, and the ability to reset a student login.</p>
+          <div><button class="btn pri" data-go="admin">Continue as admin</button></div>
         </div>
       </div>
       <p class="muted" style="font-size:12.5px;margin-top:24px;">
-        Demo access &mdash; student <b class="mono">aryansh.sinha2024@vitstudent.ac.in</b> / <b class="mono">aryanshsinha</b> &nbsp;&middot;&nbsp; faculty <b class="mono">teacher@domain</b> / <b class="mono">teach123</b>. Passwords are stored one-way hashed; emails are encrypted at rest.
+        Demo access &mdash; student <b class="mono">aryansh.sinha2024@vitstudent.ac.in</b> / <b class="mono">aryanshsinha</b> &nbsp;&middot;&nbsp; faculty <b class="mono">teacher@domain</b> / <b class="mono">teach123</b> &nbsp;&middot;&nbsp; admin <b class="mono">admin</b> / <b class="mono">admin@123</b>. Passwords are stored one-way hashed; emails are encrypted at rest.
       </p>
     </section>
 
@@ -242,6 +267,12 @@
               <div id="pwMsg"></div>
             </div></div>
         </div>
+
+        <div class="card"><div class="hd"><h3>Faculty &amp; available slots</h3><span id="stFacCount" class="muted" style="margin-left:auto;font-size:12.5px"></span></div>
+          <div class="bd">
+            <p class="mini" style="margin:0 0 10px">Which faculty still have room to take on a project team. Contact details stay private.</p>
+            <div class="scrollx"><table class="dtable"><thead><tr><th>Faculty</th><th>School</th><th>Slots remaining</th></tr></thead><tbody id="stFacDir"></tbody></table></div>
+          </div></div>
       </div>
     </section>
 
@@ -262,24 +293,79 @@
 
       <div id="facDash" class="hidden">
         <div class="pagehead spread" style="margin-bottom:var(--s4)">
-          <div><div class="eyebrow">Faculty review</div><h1>Groups awaiting approval</h1></div>
+          <div><div class="eyebrow">Faculty review</div><h1>Team &amp; student review</h1></div>
         </div>
-        <div class="toolbar">
-          <div class="cap">
-            <span class="lbl">Groups accepted <b id="capUsed">0</b> / <b id="capMax">3</b></span>
-            <div class="meter"><span id="capBar" style="width:0%"></span></div>
+        <div class="tabs">
+          <button class="tab active" data-ftab="groups">Groups to review</button>
+          <button class="tab" data-ftab="students">Student directory</button>
+        </div>
+
+        <div id="ftab-groups">
+          <div class="toolbar">
+            <div class="cap">
+              <span class="lbl">Groups accepted <b id="capUsed">0</b> / <b id="capMax">3</b></span>
+              <div class="meter"><span id="capBar" style="width:0%"></span></div>
+            </div>
+            <span class="pill dot" id="facSummary" style="background:var(--surface);border:1px solid var(--line);color:var(--ink-2)"></span>
+            <label class="row" style="font-size:13px;color:var(--ink-2);gap:7px;cursor:pointer;margin-left:auto">
+              <input type="checkbox" id="onlyPass" style="width:16px;height:16px;accent-color:var(--brand)"> Only groups that qualify
+            </label>
           </div>
-          <label class="row" style="font-size:13px;color:var(--ink-2);gap:7px;cursor:pointer;margin-left:auto">
-            <input type="checkbox" id="onlyPass" style="width:16px;height:16px;accent-color:var(--brand)"> Only groups that qualify
-          </label>
+          <div class="glist" id="facGroups"></div>
         </div>
-        <div class="glist" id="facGroups"></div>
+
+        <div id="ftab-students" class="hidden">
+          <div class="searchrow">
+            <input class="input" id="facStuSearch" placeholder="Search by reg no., name, or email">
+            <span class="mini" id="facStuCount"></span>
+          </div>
+          <div class="scrollx"><table class="dtable"><thead><tr><th>Reg no.</th><th>Name</th><th>School</th><th>Type</th><th>Email</th></tr></thead><tbody id="facStuRows"></tbody></table></div>
+          <div class="pager"><span class="count" id="facStuPage"></span><button class="btn sm" id="facStuPrev">Prev</button><button class="btn sm" id="facStuNext">Next</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN -->
+    <section id="view-admin" class="hidden">
+      <button class="backlink" data-go="landing">&larr; Back</button>
+      <div id="admLogin" class="authwrap">
+        <div class="card authcard">
+          <div class="hd"><h3>Administrator sign in</h3></div>
+          <div class="bd">
+            <div class="field"><label>Username</label><input class="input mono" id="admUser" value="admin" autocomplete="username"></div>
+            <div class="field"><label>Password</label><input class="input" id="admPass" type="password" value="admin@123" autocomplete="current-password"></div>
+            <button class="btn pri" id="admSignin" style="width:100%">Sign in</button>
+            <div id="admMsg"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="admDash" class="hidden">
+        <div class="pagehead"><div class="eyebrow">Administration</div><h1>All accounts</h1></div>
+        <div class="tabs">
+          <button class="tab active" data-atab="students">Students</button>
+          <button class="tab" data-atab="faculty">Faculty</button>
+        </div>
+
+        <div id="atab-students">
+          <div class="searchrow">
+            <input class="input" id="admStuSearch" placeholder="Search by reg no., name, or email">
+            <span class="mini" id="admStuCount"></span>
+          </div>
+          <div class="scrollx"><table class="dtable"><thead><tr><th>Reg no.</th><th>Name</th><th>School</th><th>Email</th><th>Initial password</th><th></th></tr></thead><tbody id="admStuRows"></tbody></table></div>
+          <div class="pager"><span class="count" id="admStuPage"></span><button class="btn sm" id="admStuPrev">Prev</button><button class="btn sm" id="admStuNext">Next</button></div>
+        </div>
+
+        <div id="atab-faculty" class="hidden">
+          <div class="searchrow"><span class="mini" id="admFacCount"></span></div>
+          <div class="scrollx"><table class="dtable"><thead><tr><th>Name</th><th>Email</th><th>School</th><th>Slots (used / max)</th><th>Remaining</th><th>Password</th></tr></thead><tbody id="admFacRows"></tbody></table></div>
+        </div>
       </div>
     </section>
   </main>
 
 <script>
-var facTok=null, stTok=null, stReg=null;
+var facTok=null, stTok=null, stReg=null, admTok=null;
 function initials(name){return String(name||'?').split(' ').map(function(w){return w[0]||''}).join('').slice(0,2).toUpperCase();}
 function setUser(name){
   var c=document.getElementById('userchip'),so=document.getElementById('signout');
@@ -287,16 +373,18 @@ function setUser(name){
     c.classList.remove('hidden');so.classList.remove('hidden');}
   else{c.classList.add('hidden');so.classList.add('hidden');}
 }
-function show(v){['landing','student','faculty'].forEach(function(x){document.getElementById('view-'+x).classList.toggle('hidden',x!==v);});
+function show(v){['landing','student','faculty','admin'].forEach(function(x){document.getElementById('view-'+x).classList.toggle('hidden',x!==v);});
   if(v==='landing')setUser(null);
-  if(v==='student'&&stTok)loadMyGroups();
+  if(v==='student'&&stTok){loadMyGroups();loadStudentFacDir();}
   window.scrollTo(0,0);
 }
 document.querySelectorAll('[data-go]').forEach(function(b){b.onclick=function(){show(b.getAttribute('data-go'));};});
-document.getElementById('signout').onclick=function(){facTok=null;stTok=null;stReg=null;setUser(null);
+document.getElementById('signout').onclick=function(){facTok=null;stTok=null;stReg=null;admTok=null;setUser(null);
   document.getElementById('stApp').classList.add('hidden');document.getElementById('stLogin').classList.remove('hidden');
   document.getElementById('facDash').classList.add('hidden');document.getElementById('facLogin').classList.remove('hidden');
+  document.getElementById('admDash').classList.add('hidden');document.getElementById('admLogin').classList.remove('hidden');
   show('landing');};
+function tabSwitch(container,attr,val){document.querySelectorAll('#'+container+' .tab').forEach(function(t){t.classList.toggle('active',t.getAttribute(attr)===val);});}
 
 function api(pathname,opts){opts=opts||{};var h={};if(opts.token)h['Authorization']='Bearer '+opts.token;
   var body=opts.body;if(body){h['Content-Type']='application/json';body=JSON.stringify(body);}
@@ -324,7 +412,7 @@ document.getElementById('stLoginBtn').onclick=function(){
       document.getElementById('stMembers').value=r.body.reg+'\n';
       var fn=document.getElementById('stFirstLoginNote');
       if(!r.body.changedPassword)note(fn,'info','You are signing in with your initial password. Set your own below under <b>Account &amp; password</b>.');else fn.innerHTML='';
-      loadMyGroups();
+      loadMyGroups();loadStudentFacDir();
     }else note(document.getElementById('stLoginMsg'),'bad',esc(r.body.error));
   });
 };
@@ -359,7 +447,41 @@ document.getElementById('pwBtn').onclick=function(){
   });
 };
 
+function loadStudentFacDir(){api('/api/faculty-directory',{token:stTok}).then(function(r){
+  if(!r.ok)return;
+  document.getElementById('stFacCount').textContent=r.body.rows.length+' faculty';
+  document.getElementById('stFacDir').innerHTML=r.body.rows.map(function(f){
+    var col=f.slotsRemaining>0?'var(--good)':'var(--ink-3)';
+    return '<tr><td>'+esc(f.name)+'</td><td>'+esc(f.school)+'</td><td><b style="color:'+col+'">'+f.slotsRemaining+'</b> <span class="mini">/ '+f.capacity+'</span></td></tr>';
+  }).join('')||'<tr><td colspan="3" class="mini">No faculty.</td></tr>';
+});}
+
 /* ---------------- faculty ---------------- */
+// tab switching
+document.querySelectorAll('#view-faculty .tab').forEach(function(t){t.onclick=function(){
+  var v=t.getAttribute('data-ftab');tabSwitch('view-faculty','data-ftab',v);
+  document.getElementById('ftab-groups').classList.toggle('hidden',v!=='groups');
+  document.getElementById('ftab-students').classList.toggle('hidden',v!=='students');
+  if(v==='students')loadFacStudents();
+};});
+var facStuState={q:'',page:1,pages:1},facStuSeq=0;
+function loadFacStudents(){
+  var my=++facStuSeq;
+  api('/api/faculty/students?q='+encodeURIComponent(facStuState.q)+'&page='+facStuState.page+'&size=50',{token:facTok}).then(function(r){
+    if(my!==facStuSeq)return;   // ignore out-of-order (stale) responses
+    if(!r.ok)return;facStuState.pages=r.body.pages;
+    document.getElementById('facStuCount').textContent=r.body.total.toLocaleString()+' students';
+    document.getElementById('facStuPage').textContent='Page '+r.body.page+' of '+r.body.pages;
+    document.getElementById('facStuRows').innerHTML=r.body.rows.map(function(s){
+      return '<tr><td class="mono">'+esc(s.reg)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.school)+'</td><td>'+(s.scope?'<span class="pill scope">SCOPE</span>':'Other')+'</td><td class="mono">'+esc(s.email)+'</td></tr>';
+    }).join('')||'<tr><td colspan="5" class="mini">No matches.</td></tr>';
+  });
+}
+var facStuTimer;
+document.getElementById('facStuSearch').oninput=function(e){clearTimeout(facStuTimer);facStuTimer=setTimeout(function(){facStuState.q=e.target.value;facStuState.page=1;loadFacStudents();},220);};
+document.getElementById('facStuPrev').onclick=function(){if(facStuState.page>1){facStuState.page--;loadFacStudents();}};
+document.getElementById('facStuNext').onclick=function(){if(facStuState.page<facStuState.pages){facStuState.page++;loadFacStudents();}};
+
 document.getElementById('facSignin').onclick=function(){
   var email=document.getElementById('facEmail').value.trim(),password=document.getElementById('facPass').value;
   api('/api/faculty/login',{method:'POST',body:{email:email,password:password}}).then(function(r){
@@ -376,6 +498,8 @@ function loadFac(){api('/api/faculty/groups',{token:facTok}).then(function(r){
   document.getElementById('capUsed').textContent=used;document.getElementById('capMax').textContent=max;
   document.getElementById('capBar').style.width=Math.min(100,used/max*100)+'%';
   var full=used>=max;
+  var qualify=r.body.groups.filter(function(g){return g.valid;}).length;
+  document.getElementById('facSummary').textContent=r.body.groups.length+' pending · '+qualify+' qualify';
   var groups=r.body.groups.filter(function(g){return onlyPass?g.valid:true;});
   document.getElementById('facGroups').innerHTML=groups.map(function(g){
     var canAccept=g.valid&&g.status!=='accepted'&&!full;
@@ -393,6 +517,55 @@ document.getElementById('facGroups').addEventListener('click',function(e){
     if(!r.ok)alert(r.body.error+(r.body.problems?'\n- '+r.body.problems.join('\n- '):''));loadFac();
   });
 });
+
+/* ---------------- admin ---------------- */
+document.getElementById('admSignin').onclick=function(){
+  var username=document.getElementById('admUser').value.trim(),password=document.getElementById('admPass').value;
+  api('/api/admin/login',{method:'POST',body:{username:username,password:password}}).then(function(r){
+    if(r.ok){admTok=r.body.token;setUser('Administrator');
+      document.getElementById('admLogin').classList.add('hidden');document.getElementById('admDash').classList.remove('hidden');
+      loadAdmStudents();loadAdmFaculty();}
+    else note(document.getElementById('admMsg'),'bad',esc(r.body.error));
+  });
+};
+document.querySelectorAll('#view-admin .tab').forEach(function(t){t.onclick=function(){
+  var v=t.getAttribute('data-atab');tabSwitch('view-admin','data-atab',v);
+  document.getElementById('atab-students').classList.toggle('hidden',v!=='students');
+  document.getElementById('atab-faculty').classList.toggle('hidden',v!=='faculty');
+};});
+var admStuState={q:'',page:1,pages:1},admStuSeq=0;
+function loadAdmStudents(){
+  var my=++admStuSeq;
+  api('/api/admin/students?q='+encodeURIComponent(admStuState.q)+'&page='+admStuState.page+'&size=50',{token:admTok}).then(function(r){
+    if(my!==admStuSeq)return;   // ignore out-of-order (stale) responses
+    if(!r.ok)return;admStuState.pages=r.body.pages;
+    document.getElementById('admStuCount').textContent=r.body.total.toLocaleString()+' students';
+    document.getElementById('admStuPage').textContent='Page '+r.body.page+' of '+r.body.pages;
+    document.getElementById('admStuRows').innerHTML=r.body.rows.map(function(s){
+      var pw=s.changed?'<span class="mini">changed</span>':'<span class="mono">'+esc(s.initialPassword)+'</span>';
+      return '<tr><td class="mono">'+esc(s.reg)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.school)+'</td><td class="mono">'+esc(s.email)+'</td><td>'+pw+'</td><td><button class="btn sm" data-reset="'+esc(s.reg)+'">Reset</button></td></tr>';
+    }).join('')||'<tr><td colspan="6" class="mini">No matches.</td></tr>';
+  });
+}
+var admStuTimer;
+document.getElementById('admStuSearch').oninput=function(e){clearTimeout(admStuTimer);admStuTimer=setTimeout(function(){admStuState.q=e.target.value;admStuState.page=1;loadAdmStudents();},220);};
+document.getElementById('admStuPrev').onclick=function(){if(admStuState.page>1){admStuState.page--;loadAdmStudents();}};
+document.getElementById('admStuNext').onclick=function(){if(admStuState.page<admStuState.pages){admStuState.page++;loadAdmStudents();}};
+document.getElementById('admStuRows').addEventListener('click',function(e){
+  var b=e.target.closest('[data-reset]');if(!b)return;
+  var reg=b.getAttribute('data-reset');
+  api('/api/admin/reset-password',{method:'POST',token:admTok,body:{reg:reg}}).then(function(r){
+    if(r.ok){alert('Reset '+reg+' to initial password: '+r.body.initialPassword);loadAdmStudents();}
+    else alert(r.body.error);
+  });
+});
+function loadAdmFaculty(){api('/api/admin/faculty',{token:admTok}).then(function(r){
+  if(!r.ok)return;
+  document.getElementById('admFacCount').textContent=r.body.rows.length+' faculty';
+  document.getElementById('admFacRows').innerHTML=r.body.rows.map(function(f){
+    return '<tr><td>'+esc(f.name)+'</td><td class="mono">'+esc(f.email)+'</td><td>'+esc(f.school)+'</td><td>'+f.used+' / '+f.capacity+'</td><td><b style="color:'+(f.remaining>0?'var(--good)':'var(--ink-3)')+'">'+f.remaining+'</b></td><td class="mono">'+esc(f.initialPassword)+'</td></tr>';
+  }).join('');
+});}
 
 /* theme */
 var TH='opp_theme';

@@ -91,8 +91,9 @@ function addStudent(students, usedReg, usedEmail, reg, fn, sn) {
   };
 }
 
+const DEPTS = ['SCOPE', 'SENSE', 'SELECT', 'SMEC', 'SCHEME', 'SCE', 'SBST'];
 function genFaculty() {
-  const faculty = [{ email: 'teacher@domain', name: 'Dr. Demo Faculty', passHash: vault.hashPassword('teach123'), capacity: FACULTY_CAP }];
+  const faculty = [{ email: 'teacher@domain', name: 'Dr. Demo Faculty', passHash: vault.hashPassword('teach123'), capacity: FACULTY_CAP, school: 'SCOPE' }];
   for (let i = 1; i < FACULTY; i++) {
     const fn = clean(pick(FIRST)) || 'Prof', sn = clean(pick(SUR)) || 'Rao';
     faculty.push({
@@ -100,6 +101,7 @@ function genFaculty() {
       name: 'Prof. ' + fn + ' ' + sn,
       passHash: vault.hashPassword('faculty' + i),        // demo password: faculty<i>
       capacity: FACULTY_CAP,
+      school: DEPTS[i % DEPTS.length],
     });
   }
   return faculty;
@@ -119,8 +121,9 @@ const groups = formed.teams.slice(0, PENDING_GROUPS).map((t, i) => ({
   submittedBy: t.members[0], createdAt: Date.now() - (PENDING_GROUPS - i) * 60000,
 }));
 
+const admin = { username: 'admin', passHash: vault.hashPassword('admin@123') };
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
-fs.writeFileSync(OUT, JSON.stringify({ students, groups, faculty }, null, 0));
+fs.writeFileSync(OUT, JSON.stringify({ students, groups, faculty, admin }, null, 0));
 console.error('Done in ' + ((Date.now() - t0) / 1000).toFixed(0) + 's. ' +
   Object.keys(students).length + ' students, ' + faculty.length + ' faculty, ' +
   groups.length + ' pending groups. Possible teams total: ' + formed.teams.length);
