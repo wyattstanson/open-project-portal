@@ -238,6 +238,9 @@
   .topbar{background:color-mix(in srgb,var(--surface) 82%,transparent);}
   .userchip{background:var(--brand-wash);border-color:color-mix(in srgb,var(--brand) 25%,var(--line));color:var(--brand-2);}
   .userchip .av{background:var(--brand);color:var(--brand-ink);}
+  .btn.signout{display:inline-flex;align-items:center;gap:6px;border-color:var(--line-2);background:var(--surface);color:var(--ink-2);font-weight:600;}
+  .btn.signout:hover{border-color:var(--bad);color:var(--bad);background:var(--bad-wash);}
+  .btn.signout svg{stroke:currentColor;}
 
   /* jug-filling guide */
   .jug{display:flex;gap:8px;flex-wrap:wrap;}
@@ -279,8 +282,11 @@
     </div>
     <div class="right">
       <span class="userchip hidden" id="userchip"><span class="av" id="userav"></span><span id="username"></span></span>
-      <button class="btn sm ghost hidden" id="signout">Sign out</button>
       <button class="btn sm ghost" id="theme" title="Toggle theme" aria-label="Toggle theme">Theme</button>
+      <button class="btn sm signout hidden" id="signout" title="Sign out">
+        <svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        Sign out
+      </button>
     </div>
   </div></header>
 
