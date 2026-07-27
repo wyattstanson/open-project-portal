@@ -186,8 +186,12 @@ function validateGroup(members) {
 function groupView(g, opts) {
   opts = opts || {};
   const v = validateGroup(g.members);
+  const rfIdx = g.requestedFaculty ? db.faculty.findIndex((f) => f.email === g.requestedFaculty) : -1;
+  const rf = rfIdx >= 0 ? db.faculty[rfIdx] : null;
+  const asg = g.faculty ? db.faculty.find((f) => f.email === g.faculty) : null;
   return {
-    id: g.id, status: g.status, faculty: g.faculty, createdAt: g.createdAt,
+    id: g.id, status: g.status, faculty: g.faculty, facultyName: asg ? asg.name : null, createdAt: g.createdAt,
+    requestedFaculty: g.requestedFaculty || null, requestedFacultyName: rf ? rf.name : null, requestedFacultyId: rfIdx >= 0 ? rfIdx : null,
     valid: v.valid, problems: v.problems,
     members: v.people.map((p) => {
       const st = db.students[p.reg];
@@ -244,9 +248,11 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/faculty/groups' && req.method === 'GET') {
     const sess = facultyAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as faculty first.' });
     const f = findFaculty(sess.email);
+    // groups that requested me, plus the open (unrequested) pending pool, plus mine
     const groups = db.groups
-      .filter((g) => g.status === 'pending' || g.faculty === sess.email)
-      .sort((a, b) => a.createdAt - b.createdAt)
+      .filter((g) => g.faculty === sess.email ||
+        (g.status === 'pending' && (!g.requestedFaculty || g.requestedFaculty === sess.email)))
+      .sort((a, b) => (b.requestedFaculty === sess.email ? 1 : 0) - (a.requestedFaculty === sess.email ? 1 : 0) || a.createdAt - b.createdAt)
       .map((g) => groupView(g, { reveal: true }));
     return sendJSON(res, 200, { groups, capacity: f.capacity, seatsUsed: seatsUsed(f.email) });
   }
@@ -262,6 +268,7 @@ const server = http.createServer(async (req, res) => {
       if (g.status === 'accepted') return sendJSON(res, 409, { error: 'Already accepted.' });
       const v = validateGroup(g.members);
       if (!v.valid) return sendJSON(res, 422, { error: 'Group does not pass the constraints.', problems: v.problems });
+      if (g.requestedFaculty && g.requestedFaculty !== f.email) return sendJSON(res, 409, { error: 'This group selected a different faculty.' });
       if (seatsUsed(f.email) >= f.capacity) return sendJSON(res, 409, { error: 'No seats left. You are at capacity.' });
       g.status = 'accepted'; g.faculty = f.email;
     } else if (decision === 'reject') {
@@ -336,14 +343,32 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  // ---- STUDENT: faculty directory (name, school, slots remaining). No emails. ----
+  // ---- STUDENT: faculty directory (name, school, slots remaining). No emails.
+  //      `id` is the db index, used only as an opaque handle to select a faculty. ----
   if (p === '/api/faculty-directory' && req.method === 'GET') {
     if (!studentAuth(req)) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
-    const rows = db.faculty.map((f) => {
+    const rows = db.faculty.map((f, id) => {
       const used = seatsUsed(f.email);
-      return { name: f.name, school: f.school, capacity: f.capacity, slotsRemaining: f.capacity - used };
+      return { id, name: f.name, school: f.school, capacity: f.capacity, slotsRemaining: f.capacity - used };
     }).sort((a, b) => b.slotsRemaining - a.slotsRemaining);
     return sendJSON(res, 200, { rows });
+  }
+
+  // ---- STUDENT: select (request) a faculty for your group ----
+  if (p === '/api/student/select-faculty' && req.method === 'POST') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const { facultyId } = await readBody(req);
+    const g = db.groups.find((x) => x.members.includes(sess.reg) && x.status !== 'rejected');
+    if (!g) return sendJSON(res, 404, { error: 'Submit your group first, then pick a faculty.' });
+    if (g.status === 'accepted') return sendJSON(res, 409, { error: 'Your group is already accepted; faculty is locked.' });
+    let email = null, name = null;
+    if (facultyId !== '' && facultyId != null) {
+      const f = db.faculty[Number(facultyId)];
+      if (!f) return sendJSON(res, 404, { error: 'Faculty not found.' });
+      email = f.email; name = f.name;
+    }
+    g.requestedFaculty = email; persist();
+    return sendJSON(res, 200, { ok: true, requestedFacultyName: name });
   }
 
   // ---- FACULTY: searchable, paginated student directory (real emails) ----
@@ -385,6 +410,28 @@ const server = http.createServer(async (req, res) => {
     return sendJSON(res, 200, { rows });
   }
 
+  // ---- ADMIN: download all student-faculty allocations as CSV ----
+  if (p === '/api/admin/export' && req.method === 'GET') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const rows = [['Group', 'Status', 'Assigned faculty', 'Selected faculty', 'Slot', 'Reg no', 'Name', 'School', 'Type', 'Email']];
+    for (const g of db.groups) {
+      const asg = g.faculty ? (db.faculty.find((f) => f.email === g.faculty) || {}).name || g.faculty : '';
+      const reqName = g.requestedFaculty ? (db.faculty.find((f) => f.email === g.requestedFaculty) || {}).name || g.requestedFaculty : '';
+      g.members.forEach((reg, i) => {
+        const s = db.students[reg] || {};
+        const info = engine.schoolOf(reg.slice(2, 5), MAP);
+        rows.push([g.id, g.status, asg, reqName, i + 1, reg, s.name || '', info.school, info.scope ? 'SCOPE' : 'Other', s.email ? vault.decrypt(s.email) : '']);
+      });
+    }
+    const csv = rows.map((r) => r.map((x) => '"' + String(x).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    res.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="allocations.csv"',
+      'Access-Control-Allow-Origin': '*',
+    });
+    return res.end(csv);
+  }
+
   // ---- ADMIN: reset a student to their initial password ----
   if (p === '/api/admin/reset-password' && req.method === 'POST') {
     if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
@@ -415,7 +462,7 @@ const server = http.createServer(async (req, res) => {
     if (!regs.includes(sess.reg)) return sendJSON(res, 422, { error: 'Your own registration number must be in the group.' });
     const v = validateGroup(regs);
     if (!v.valid) return sendJSON(res, 422, { error: 'Group does not pass the constraints.', problems: v.problems });
-    const g = { id: 'G' + String(db.groups.length + 1).padStart(3, '0'), members: regs, status: 'pending', faculty: null, submittedBy: sess.reg, createdAt: Date.now() };
+    const g = { id: 'G' + String(db.groups.length + 1).padStart(3, '0'), members: regs, status: 'pending', faculty: null, requestedFaculty: null, submittedBy: sess.reg, createdAt: Date.now() };
     db.groups.push(g); persist();
     return sendJSON(res, 200, { ok: true, group: groupView(g, { selfReg: sess.reg }) });
   }

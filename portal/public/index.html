@@ -272,6 +272,50 @@
     .topbar .right{gap:8px;}
     .userchip{padding:4px 8px;font-size:12px;}
   }
+
+  /* password eye toggle */
+  .pwfield{position:relative;display:block;}
+  .pwfield .input{padding-right:42px;}
+  .pweye{position:absolute;right:5px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;
+    color:var(--ink-3);padding:6px;border-radius:7px;display:grid;place-items:center;transition:color .15s,background .15s;}
+  .pweye:hover{color:var(--brand-2);background:var(--surface-2);}
+  .pweye svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;}
+
+  /* custom select (kills the OS-native vibecoded look) */
+  select.sel{appearance:none;-webkit-appearance:none;font-family:var(--sans);font-size:13px;font-weight:500;
+    color:var(--ink);background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r1);
+    padding:8px 32px 8px 11px;cursor:pointer;transition:.15s;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23869099' stroke-width='2.5' stroke-linecap='round'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 11px center;}
+  select.sel:hover{border-color:var(--ink-3);}
+  select.sel:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent);}
+
+  /* smooth staggered reveals for lists + rows */
+  @media(prefers-reduced-motion:no-preference){
+    .glist>*{animation:rise .42s cubic-bezier(.2,.75,.25,1) both;}
+    .glist>*:nth-child(2){animation-delay:.05s;} .glist>*:nth-child(3){animation-delay:.1s;}
+    .glist>*:nth-child(4){animation-delay:.15s;} .glist>*:nth-child(5){animation-delay:.2s;}
+    .glist>*:nth-child(n+6){animation-delay:.24s;}
+    .dtable tbody tr{animation:fadein .35s ease both;}
+    .stag{animation:pop .3s cubic-bezier(.3,1.3,.5,1) both;}
+    .slot{transition:border-color .25s,background .25s,transform .25s;}
+    .slot.filled{transform:translateY(-1px);}
+  }
+  @keyframes rise{from{opacity:0;transform:translateY(14px) scale(.99);}to{opacity:1;transform:none;}}
+  @keyframes fadein{from{opacity:0;}to{opacity:1;}}
+  @keyframes pop{from{opacity:0;transform:scale(.8);}to{opacity:1;transform:none;}}
+
+  /* faculty pick row on the student group card */
+  .pickrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line-2);}
+  .pickrow .lab2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);}
+  .pickrow select{flex:1;min-width:180px;}
+  .assigned{font-weight:700;color:var(--good);}
+
+  /* toast */
+  #toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:var(--ink);color:var(--surface);
+    padding:11px 18px;border-radius:24px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow-2);opacity:0;pointer-events:none;
+    transition:opacity .25s,transform .25s;z-index:50;}
+  #toast.show{opacity:1;transform:translate(-50%,0);}
 </style>
 </head>
 <body>
@@ -452,7 +496,8 @@
       </div>
 
       <div id="admDash" class="hidden">
-        <div class="pagehead"><div class="eyebrow">Administration</div><h1>All accounts</h1></div>
+        <div class="pagehead spread"><div><div class="eyebrow">Administration</div><h1>All accounts</h1></div>
+          <button class="btn pri" id="admExport" style="display:inline-flex;align-items:center;gap:7px"><svg class="i" style="width:16px;height:16px" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>Download allocations CSV</button></div>
         <div class="tabs">
           <button class="tab active" data-atab="students">Students</button>
           <button class="tab" data-atab="faculty">Faculty</button>
@@ -474,9 +519,12 @@
       </div>
     </section>
   </main>
+  <div id="toast"></div>
 
 <script>
-var facTok=null, stTok=null, stReg=null, admTok=null;
+var facTok=null, stTok=null, stReg=null, admTok=null, facDirData=[];
+var toastTimer;
+function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},2400);}
 function initials(name){return String(name||'?').split(' ').map(function(w){return w[0]||''}).join('').slice(0,2).toUpperCase();}
 function setUser(name){
   var c=document.getElementById('userchip'),so=document.getElementById('signout');
@@ -531,7 +579,7 @@ function loadMyGroups(){api('/api/student/mygroups',{token:stTok}).then(function
   if(!r.ok)return;
   document.getElementById('stGroupCount').textContent=r.body.groups.length?(r.body.groups.length+' group'+(r.body.groups.length>1?'s':'')):'';
   document.getElementById('stGroups').innerHTML=r.body.groups.map(function(g){
-    return '<div style="margin-bottom:14px"><div class="spread" style="margin-bottom:10px"><span class="mono" style="font-weight:700;color:var(--ink-2)">'+esc(g.id)+'</span><span class="row">'+qualPill(g.valid)+statusPill(g.status)+(g.faculty?'<span class="muted" style="font-size:12px">with '+esc(g.faculty)+'</span>':'')+'</span></div><div class="members">'+g.members.map(memberRow).join('')+'</div>'+(g.valid?'':'<div class="note bad">'+problemList(g.problems)+'</div>')+'</div>';
+    return '<div style="margin-bottom:14px"><div class="spread" style="margin-bottom:10px"><span class="mono" style="font-weight:700;color:var(--ink-2)">'+esc(g.id)+'</span><span class="row">'+qualPill(g.valid)+statusPill(g.status)+'</span></div><div class="members">'+g.members.map(memberRow).join('')+'</div>'+(g.valid?'':'<div class="note bad">'+problemList(g.problems)+'</div>')+facultyPickerHtml(g)+'</div>';
   }).join('')||'<p class="muted">You are not in a group yet. Submit one below.</p>';
 });}
 document.getElementById('stFill').onclick=function(){
@@ -559,14 +607,37 @@ document.getElementById('pwBtn').onclick=function(){
   });
 };
 
-function loadStudentFacDir(){api('/api/faculty-directory',{token:stTok}).then(function(r){
+function loadStudentFacDir(){return api('/api/faculty-directory',{token:stTok}).then(function(r){
   if(!r.ok)return;
+  facDirData=r.body.rows;
   document.getElementById('stFacCount').textContent=r.body.rows.length+' faculty';
   document.getElementById('stFacDir').innerHTML=r.body.rows.map(function(f){
     var col=f.slotsRemaining>0?'var(--good)':'var(--ink-3)';
     return '<tr><td>'+esc(f.name)+'</td><td>'+esc(f.school)+'</td><td><b style="color:'+col+'">'+f.slotsRemaining+'</b> <span class="mini">/ '+f.capacity+'</span></td></tr>';
   }).join('')||'<tr><td colspan="3" class="mini">No faculty.</td></tr>';
+  loadMyGroups();   // re-render group card now that the faculty list is available
 });}
+function facultyOptions(selId){
+  var opts='<option value="">— choose a faculty —</option>';
+  (facDirData||[]).forEach(function(f){
+    var mine=(selId!=null&&f.id===selId);
+    var dis=(f.slotsRemaining<=0&&!mine)?' disabled':'';
+    opts+='<option value="'+f.id+'"'+(mine?' selected':'')+dis+'>'+esc(f.name)+' · '+esc(f.school)+' · '+f.slotsRemaining+' slot'+(f.slotsRemaining===1?'':'s')+'</option>';
+  });
+  return opts;
+}
+function facultyPickerHtml(g){
+  if(g.status==='accepted')return '<div class="pickrow"><span class="lab2">Faculty</span><span class="assigned">✓ Approved by '+esc(g.facultyName||'')+'</span></div>';
+  var status=g.requestedFacultyName?'<span class="mini">Selected <b>'+esc(g.requestedFacultyName)+'</b> · awaiting approval</span>':'<span class="mini">No faculty selected yet</span>';
+  return '<div class="pickrow"><span class="lab2">Select faculty</span><select class="sel fpick">'+facultyOptions(g.requestedFacultyId)+'</select></div><div style="margin-top:7px">'+status+'</div>';
+}
+document.getElementById('stGroups').addEventListener('change',function(e){
+  var s=e.target.closest('select.fpick');if(!s)return;
+  api('/api/student/select-faculty',{method:'POST',token:stTok,body:{facultyId:s.value}}).then(function(r){
+    if(r.ok){toast(r.body.requestedFacultyName?('Faculty selected: '+r.body.requestedFacultyName):'Faculty cleared');loadMyGroups();}
+    else toast(r.body.error);
+  });
+});
 
 // jug-filling composition guide
 function slotHtml(k,have,need){return '<div class="slot'+(have>=need?' filled':'')+'"><div class="k">'+esc(k)+'</div><div class="v">'+have+' / '+need+'</div></div>';}
@@ -724,6 +795,27 @@ function loadAdmFaculty(){api('/api/admin/faculty',{token:admTok}).then(function
     return '<tr><td>'+esc(f.name)+'</td><td class="mono">'+esc(f.email)+'</td><td>'+esc(f.school)+'</td><td>'+f.used+' / '+f.capacity+'</td><td><b style="color:'+(f.remaining>0?'var(--good)':'var(--ink-3)')+'">'+f.remaining+'</b></td><td class="mono">'+esc(f.initialPassword)+'</td></tr>';
   }).join('');
 });}
+
+document.getElementById('admExport').onclick=function(){
+  fetch('/api/admin/export',{headers:{'Authorization':'Bearer '+admTok}}).then(function(r){
+    if(!r.ok)throw 0;return r.blob();
+  }).then(function(b){
+    var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='allocations.csv';
+    document.body.appendChild(a);a.click();setTimeout(function(){a.remove();URL.revokeObjectURL(a.href);},100);
+    toast('Downloading allocations.csv');
+  }).catch(function(){toast('Export failed. Sign in as admin.');});
+};
+
+/* password show/hide eye toggle on every password field */
+var EYE='<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3.2"/></svg>';
+var EYEOFF='<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3.2"/><line x1="3" y1="3" x2="21" y2="21"/></svg>';
+document.querySelectorAll('input[type=password]').forEach(function(inp){
+  var w=document.createElement('span');w.className='pwfield';
+  inp.parentNode.insertBefore(w,inp);w.appendChild(inp);
+  var b=document.createElement('button');b.type='button';b.className='pweye';b.setAttribute('aria-label','Show password');b.innerHTML=EYE;
+  b.onclick=function(){var show=inp.type==='password';inp.type=show?'text':'password';b.innerHTML=show?EYEOFF:EYE;b.setAttribute('aria-label',show?'Hide password':'Show password');inp.focus();};
+  w.appendChild(b);
+});
 
 /* theme */
 var TH='opp_theme';
