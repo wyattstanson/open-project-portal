@@ -77,6 +77,7 @@ function seed() {
 
 // initialise the store (seeds + writes db.json on first run)
 let db = load();
+if (!Array.isArray(db.queries)) db.queries = [];   // student -> admin support queries
 if (!fs.existsSync(DB_FILE)) persistNow();
 
 // Lock the vault to whichever key actually decrypts this database, so a wrong
@@ -290,15 +291,15 @@ const server = http.createServer(async (req, res) => {
     return sendJSON(res, 200, { ok: true, group: groupView(g, { reveal: true }), seatsUsed: seatsUsed(f.email), capacity: f.capacity });
   }
 
-  // ---- STUDENT login (email + password): verifies the scrypt hash ----
+  // ---- STUDENT login (registration number + password). Emails are never used
+  //      by students; only teachers and admin ever see email addresses. ----
   if (p === '/api/student/login' && req.method === 'POST') {
-    const { email, password } = await readBody(req);
-    if (!email || !/^\S+@\S+\.\S+$/.test(email)) return sendJSON(res, 400, { error: 'Enter a valid email.' });
-    const st = findStudentByEmail(email);
-    // same generic message whether the email is unknown or the password is wrong,
-    // so an attacker cannot tell which emails exist
+    const body = await readBody(req);
+    const raw = String(body.reg || body.email || body.id || '').trim();
+    const password = body.password;
+    const st = raw.includes('@') ? findStudentByEmail(raw) : db.students[raw.toUpperCase().replace(/\s+/g, '')];
     if (!st || !st.passwordHash || !vault.verifyPassword(password || '', st.passwordHash)) {
-      return sendJSON(res, 401, { error: 'Incorrect email or password.' });
+      return sendJSON(res, 401, { error: 'Incorrect registration number or password.' });
     }
     const tok = vault.newToken();
     sessions.set(tok, { role: 'student', reg: st.reg, name: st.name });
@@ -457,13 +458,41 @@ const server = http.createServer(async (req, res) => {
     return sendJSON(res, 200, { ok: true, initialPassword: pw });
   }
 
-  // ---- STUDENT: only THEIR OWN group(s); own email real, teammates masked ----
+  // ---- STUDENT: contact admin / raise a support query ----
+  if (p === '/api/student/query' && req.method === 'POST') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const { topic, message } = await readBody(req);
+    const t = String(topic || '').trim(), m = String(message || '').trim();
+    if (!t && !m) return sendJSON(res, 400, { error: 'Please describe the problem.' });
+    const q = { id: 'Q' + String(db.queries.length + 1).padStart(4, '0'), reg: sess.reg, name: sess.name, topic: t, message: m, status: 'open', createdAt: Date.now() };
+    db.queries.push(q); persist();
+    return sendJSON(res, 200, { ok: true, id: q.id });
+  }
+
+  // ---- ADMIN: view student queries ----
+  if (p === '/api/admin/queries' && req.method === 'GET') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const rows = db.queries.slice().sort((a, b) => b.createdAt - a.createdAt);
+    return sendJSON(res, 200, { rows, open: rows.filter((q) => q.status === 'open').length });
+  }
+
+  // ---- ADMIN: toggle a query open/resolved ----
+  if (p === '/api/admin/query-resolve' && req.method === 'POST') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const { id } = await readBody(req);
+    const q = db.queries.find((x) => x.id === id); if (!q) return sendJSON(res, 404, { error: 'Query not found.' });
+    q.status = q.status === 'open' ? 'resolved' : 'open'; persist();
+    return sendJSON(res, 200, { ok: true, status: q.status });
+  }
+
+  // ---- STUDENT: only THEIR OWN group(s). All emails masked (students never
+  //      see email addresses; only teachers and admin do). ----
   if (p === '/api/student/mygroups' && req.method === 'GET') {
     const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
     const groups = db.groups
       .filter((g) => g.members.includes(sess.reg))
       .sort((a, b) => a.createdAt - b.createdAt)
-      .map((g) => groupView(g, { selfReg: sess.reg }));
+      .map((g) => groupView(g, {}));
     return sendJSON(res, 200, { reg: sess.reg, name: sess.name, groups });
   }
 
@@ -491,7 +520,7 @@ const server = http.createServer(async (req, res) => {
     if (mine) db.groups = db.groups.filter((x) => x !== mine);   // replace the old pending group
     const g = { id: nextGroupId(), members: regs, status: 'pending', faculty: null, requestedFaculty: null, submittedBy: sess.reg, createdAt: Date.now() };
     db.groups.push(g); persist();
-    return sendJSON(res, 200, { ok: true, group: groupView(g, { selfReg: sess.reg }) });
+    return sendJSON(res, 200, { ok: true, group: groupView(g, {}) });
   }
 
   // ---- roster (masked, no emails) so the student form can pick real regs ----

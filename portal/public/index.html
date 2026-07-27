@@ -6,30 +6,30 @@
 <title>Open Project Portal</title>
 <style>
   :root{
-    --bg:#eef5fb; --surface:#ffffff; --surface-2:#f1f7fc; --raise:#ffffff;
-    --ink:#1b2b39; --ink-2:#586a7a; --ink-3:#93a3b3; --line:#e6eef6; --line-2:#d5e3ef;
-    --brand:#2e93d9; --brand-2:#1f7cc0; --brand-ink:#ffffff; --brand-wash:#e4f2fd;
-    --good:#12a06b; --good-wash:#e0f5ec; --warn:#b3760a; --warn-wash:#fbeed6;
-    --bad:#dd5c54; --bad-wash:#fce8e6; --info-wash:#e7f2fc;
+    --bg:#eaedf2; --surface:#ffffff; --surface-2:#f2f4f8; --raise:#ffffff;
+    --ink:#1b2431; --ink-2:#515c6b; --ink-3:#8791a1; --line:#e3e7ee; --line-2:#cdd4df;
+    --brand:#284c8c; --brand-2:#1e3b70; --brand-ink:#ffffff; --brand-wash:#e7ecf6;
+    --good:#2c7a52; --good-wash:#e6f1eb; --warn:#8a6212; --warn-wash:#f4ecd8;
+    --bad:#b8442f; --bad-wash:#f6e6e1; --info-wash:#e9eef7;
     --s1:4px; --s2:8px; --s3:12px; --s4:18px; --s5:26px; --s6:40px; --s7:56px;
-    --r1:10px; --r2:16px; --r3:22px;
-    --shadow:0 2px 6px rgba(40,90,140,.05), 0 16px 36px -18px rgba(40,90,140,.16);
-    --shadow-2:0 24px 54px -20px rgba(46,147,217,.30);
+    --r1:10px; --r2:15px; --r3:20px;
+    --shadow:0 1px 2px rgba(18,28,45,.06), 0 3px 8px rgba(18,28,45,.05), 0 12px 28px -8px rgba(18,28,45,.13);
+    --shadow-2:0 26px 54px -16px rgba(18,28,45,.30);
     --mono:"SFMono-Regular",ui-monospace,"Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
     --sans:"Inter","Segoe UI",Roboto,-apple-system,system-ui,"Helvetica Neue",Arial,sans-serif;
     --serif:"Inter","Segoe UI",Roboto,-apple-system,system-ui,"Helvetica Neue",Arial,sans-serif;
   }
   @media(prefers-color-scheme:dark){:root{
-    --bg:#0c141d; --surface:#14202c; --surface-2:#1a2836; --raise:#1d2c3a;
-    --ink:#e9f1f8; --ink-2:#9db0c0; --ink-3:#647686; --line:#223140; --line-2:#324556;
-    --brand:#58b3f0; --brand-2:#7cc6f5; --brand-ink:#06121d; --brand-wash:#12283b;
-    --good:#3fd08a; --good-wash:#0f2e20; --warn:#e0b45a; --warn-wash:#33280f;
-    --bad:#ee7369; --bad-wash:#341b18; --info-wash:#10263a;
-    --shadow:0 2px 6px rgba(0,0,0,.35), 0 16px 40px -18px rgba(0,0,0,.6);
-    --shadow-2:0 26px 58px -18px rgba(0,0,0,.7);
+    --bg:#111520; --surface:#191e2a; --surface-2:#202634; --raise:#242b3a;
+    --ink:#e7eaf1; --ink-2:#99a2b2; --ink-3:#616b7b; --line:#272e3c; --line-2:#3a4354;
+    --brand:#5a82c4; --brand-2:#7c9cd6; --brand-ink:#0a1120; --brand-wash:#182236;
+    --good:#4fb37e; --good-wash:#123020; --warn:#d0a24f; --warn-wash:#2f2712;
+    --bad:#db6a56; --bad-wash:#331a15; --info-wash:#141d30;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 10px rgba(0,0,0,.35), 0 16px 36px -10px rgba(0,0,0,.55);
+    --shadow-2:0 28px 60px -16px rgba(0,0,0,.7);
   }}
-  :root[data-theme="light"]{--bg:#eef5fb;--surface:#fff;--surface-2:#f1f7fc;--raise:#fff;--ink:#1b2b39;--ink-2:#586a7a;--ink-3:#93a3b3;--line:#e6eef6;--line-2:#d5e3ef;--brand:#2e93d9;--brand-2:#1f7cc0;--brand-ink:#fff;--brand-wash:#e4f2fd;--good:#12a06b;--good-wash:#e0f5ec;--warn:#b3760a;--warn-wash:#fbeed6;--bad:#dd5c54;--bad-wash:#fce8e6;--info-wash:#e7f2fc;--shadow:0 2px 6px rgba(40,90,140,.05),0 16px 36px -18px rgba(40,90,140,.16);--shadow-2:0 24px 54px -20px rgba(46,147,217,.30);}
-  :root[data-theme="dark"]{--bg:#0c141d;--surface:#14202c;--surface-2:#1a2836;--raise:#1d2c3a;--ink:#e9f1f8;--ink-2:#9db0c0;--ink-3:#647686;--line:#223140;--line-2:#324556;--brand:#58b3f0;--brand-2:#7cc6f5;--brand-ink:#06121d;--brand-wash:#12283b;--good:#3fd08a;--good-wash:#0f2e20;--warn:#e0b45a;--warn-wash:#33280f;--bad:#ee7369;--bad-wash:#341b18;--info-wash:#10263a;--shadow:0 2px 6px rgba(0,0,0,.35),0 16px 40px -18px rgba(0,0,0,.6);--shadow-2:0 26px 58px -18px rgba(0,0,0,.7);}
+  :root[data-theme="light"]{--bg:#eaedf2;--surface:#fff;--surface-2:#f2f4f8;--raise:#fff;--ink:#1b2431;--ink-2:#515c6b;--ink-3:#8791a1;--line:#e3e7ee;--line-2:#cdd4df;--brand:#284c8c;--brand-2:#1e3b70;--brand-ink:#fff;--brand-wash:#e7ecf6;--good:#2c7a52;--good-wash:#e6f1eb;--warn:#8a6212;--warn-wash:#f4ecd8;--bad:#b8442f;--bad-wash:#f6e6e1;--info-wash:#e9eef7;--shadow:0 1px 2px rgba(18,28,45,.06),0 3px 8px rgba(18,28,45,.05),0 12px 28px -8px rgba(18,28,45,.13);--shadow-2:0 26px 54px -16px rgba(18,28,45,.30);}
+  :root[data-theme="dark"]{--bg:#111520;--surface:#191e2a;--surface-2:#202634;--raise:#242b3a;--ink:#e7eaf1;--ink-2:#99a2b2;--ink-3:#616b7b;--line:#272e3c;--line-2:#3a4354;--brand:#5a82c4;--brand-2:#7c9cd6;--brand-ink:#0a1120;--brand-wash:#182236;--good:#4fb37e;--good-wash:#123020;--warn:#d0a24f;--warn-wash:#2f2712;--bad:#db6a56;--bad-wash:#331a15;--info-wash:#141d30;--shadow:0 1px 2px rgba(0,0,0,.4),0 4px 10px rgba(0,0,0,.35),0 16px 36px -10px rgba(0,0,0,.55);--shadow-2:0 28px 60px -16px rgba(0,0,0,.7);}
 
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -319,10 +319,7 @@
 
   /* ================= breezy layer: airy, soft, light ================= */
   body{
-    background:
-      radial-gradient(130% 90% at 100% -5%, color-mix(in srgb,var(--brand) 10%,transparent), transparent 58%),
-      radial-gradient(100% 80% at -5% 0%, color-mix(in srgb,var(--good) 7%,transparent), transparent 52%),
-      var(--bg);
+    background:linear-gradient(180deg, color-mix(in srgb,var(--surface) 55%,var(--bg)) 0%, var(--bg) 42%);
     background-attachment:fixed;
   }
   .brand .nm{font-weight:750;letter-spacing:-.02em;}
@@ -347,6 +344,23 @@
     .authcard{animation:floatin .5s cubic-bezier(.2,.7,.2,1) both;}
   }
   @keyframes floatin{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
+
+  /* ============ professional + 3D depth (no neon) ============ */
+  #view-landing::before{display:none!important;}          /* remove the glow */
+  .brand .mk{background:var(--brand);box-shadow:0 4px 10px -3px rgba(18,28,45,.4);}
+  .btn.pri{box-shadow:0 2px 6px rgba(18,28,45,.16);}
+  .btn.pri:hover{box-shadow:0 7px 18px -5px rgba(18,28,45,.26);filter:none;}
+  .eyebrow::before{background:var(--brand);}
+  .pill.scope{background:var(--brand-wash);color:var(--brand);}
+  ::selection{background:color-mix(in srgb,var(--brand) 26%,transparent);}
+  /* layered elevation = tactile 3D */
+  .card,.gcard,.role,.stat,.cap{box-shadow:var(--shadow);}
+  .roles{perspective:1300px;}
+  .role{transform-style:preserve-3d;will-change:transform;transition:transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .2s,border-color .2s;}
+  .role::after{background:var(--brand);}
+  .role .ic{background:var(--brand-wash);color:var(--brand);}
+  .authcard{box-shadow:var(--shadow-2);}
+  select.sel:focus,.input:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 20%,transparent);}
 </style>
 </head>
 <body>
@@ -394,7 +408,7 @@
         </div>
       </div>
       <p class="muted" style="font-size:12.5px;margin-top:24px;">
-        Demo access &mdash; student <b class="mono">aryansh.sinha2024@vitstudent.ac.in</b> / <b class="mono">aryanshsinha</b> &nbsp;&middot;&nbsp; faculty <b class="mono">teacher@domain</b> / <b class="mono">teach123</b> &nbsp;&middot;&nbsp; admin <b class="mono">admin</b> / <b class="mono">admin@123</b>. Passwords are stored one-way hashed; emails are encrypted at rest.
+        Demo access &mdash; student <b class="mono">24BCE2312</b> / <b class="mono">aryanshsinha</b> &nbsp;&middot;&nbsp; faculty <b class="mono">teacher@domain</b> / <b class="mono">teach123</b> &nbsp;&middot;&nbsp; admin <b class="mono">admin</b> / <b class="mono">admin@123</b>. Students sign in with their registration number; emails are visible only to staff.
       </p>
     </section>
 
@@ -405,11 +419,11 @@
         <div class="card authcard">
           <div class="hd"><h3>Student sign in</h3></div>
           <div class="bd">
-            <div class="field"><label>Institute email</label><input class="input mono" id="stEmail" placeholder="name.surname2024@vitstudent.ac.in" autocomplete="username"></div>
+            <div class="field"><label>Registration number</label><input class="input mono" id="stReg" placeholder="24BCE2312" autocomplete="username" style="text-transform:uppercase"></div>
             <div class="field"><label>Password</label><input class="input" id="stPass" type="password" placeholder="Your password" autocomplete="current-password"></div>
             <button class="btn pri" id="stLoginBtn" style="width:100%">Sign in</button>
             <div id="stLoginMsg"></div>
-            <p class="muted" style="font-size:12px;margin:12px 0 0">Initial password is your full name in lowercase with no spaces. You can change it after signing in.</p>
+            <p class="muted" style="font-size:12px;margin:12px 0 0">Sign in with your registration number. Initial password is your full name in lowercase with no spaces. Your email is private and only staff can see it.</p>
           </div>
         </div>
       </div>
@@ -458,6 +472,24 @@
           <div class="bd">
             <p class="mini" style="margin:0 0 10px">Which faculty still have room to take on a project team. Contact details stay private.</p>
             <div class="scrollx"><table class="dtable"><thead><tr><th>Faculty</th><th>School</th><th>Slots remaining</th></tr></thead><tbody id="stFacDir"></tbody></table></div>
+          </div></div>
+
+        <div class="card"><div class="hd"><h3>Need help? Contact admin</h3></div>
+          <div class="bd">
+            <p class="mini" style="margin:0 0 12px">Something not working? Raise it here and it goes straight to the admin as a query.</p>
+            <div class="field" style="margin-bottom:12px"><label>What is the problem?</label>
+              <select class="sel" id="qTopic" style="width:100%">
+                <option>The website is not working</option>
+                <option>I cannot submit my group</option>
+                <option>I cannot select a faculty</option>
+                <option>My details are wrong</option>
+                <option>Password / login issue</option>
+                <option>Other</option>
+              </select></div>
+            <div class="field" style="margin-bottom:12px"><label>Details (optional)</label>
+              <textarea class="input" id="qMsg" placeholder="Describe what happened..." style="min-height:84px"></textarea></div>
+            <button class="btn pri" id="qSend">Send to admin</button>
+            <div id="qOut"></div>
           </div></div>
       </div>
     </section>
@@ -532,6 +564,7 @@
         <div class="tabs">
           <button class="tab active" data-atab="students">Students</button>
           <button class="tab" data-atab="faculty">Faculty</button>
+          <button class="tab" data-atab="queries">Queries <span id="admQBadge" class="pill" style="background:var(--bad-wash);color:var(--bad);display:none;margin-left:4px">0</span></button>
         </div>
 
         <div id="atab-students">
@@ -546,6 +579,11 @@
         <div id="atab-faculty" class="hidden">
           <div class="searchrow"><span class="mini" id="admFacCount"></span></div>
           <div class="scrollx"><table class="dtable"><thead><tr><th>Name</th><th>Email</th><th>School</th><th>Slots (used / max)</th><th>Remaining</th><th>Password</th></tr></thead><tbody id="admFacRows"></tbody></table></div>
+        </div>
+
+        <div id="atab-queries" class="hidden">
+          <div class="searchrow"><span class="mini" id="admQCount"></span></div>
+          <div class="scrollx"><table class="dtable"><thead><tr><th>Query</th><th>From</th><th>Problem</th><th>Details</th><th>When</th><th>Status</th><th></th></tr></thead><tbody id="admQRows"></tbody></table></div>
         </div>
       </div>
     </section>
@@ -593,8 +631,8 @@ function qualPill(v){return v?'<span class="pill pass">qualifies</span>':'<span 
 
 /* ---------------- student ---------------- */
 document.getElementById('stLoginBtn').onclick=function(){
-  var email=document.getElementById('stEmail').value.trim(), password=document.getElementById('stPass').value;
-  api('/api/student/login',{method:'POST',body:{email:email,password:password}}).then(function(r){
+  var reg=document.getElementById('stReg').value.trim().toUpperCase(), password=document.getElementById('stPass').value;
+  api('/api/student/login',{method:'POST',body:{reg:reg,password:password}}).then(function(r){
     if(r.ok){
       stTok=r.body.token;stReg=r.body.reg;
       document.getElementById('stLogin').classList.add('hidden');document.getElementById('stApp').classList.remove('hidden');
@@ -717,6 +755,16 @@ document.getElementById('stDirRows').addEventListener('click',function(e){
   lines.push(reg);ta.value=lines.join('\n');composeGuide();
 });
 
+// contact admin / raise a query
+document.getElementById('qSend').onclick=function(){
+  var topic=document.getElementById('qTopic').value, message=document.getElementById('qMsg').value.trim();
+  api('/api/student/query',{method:'POST',token:stTok,body:{topic:topic,message:message}}).then(function(r){
+    var o=document.getElementById('qOut');
+    if(r.ok){note(o,'ok','Sent to admin as query '+esc(r.body.id)+'. They will look into it.');document.getElementById('qMsg').value='';toast('Query sent to admin');}
+    else note(o,'bad',esc(r.body.error));
+  });
+};
+
 /* ---------------- faculty ---------------- */
 // tab switching
 document.querySelectorAll('#view-faculty .tab').forEach(function(t){t.onclick=function(){
@@ -785,7 +833,7 @@ document.getElementById('admSignin').onclick=function(){
   api('/api/admin/login',{method:'POST',body:{username:username,password:password}}).then(function(r){
     if(r.ok){admTok=r.body.token;setUser('Administrator');
       document.getElementById('admLogin').classList.add('hidden');document.getElementById('admDash').classList.remove('hidden');
-      loadAdmStudents();loadAdmFaculty();}
+      loadAdmStudents();loadAdmFaculty();loadAdmQueries();}
     else note(document.getElementById('admMsg'),'bad',esc(r.body.error));
   });
 };
@@ -793,7 +841,24 @@ document.querySelectorAll('#view-admin .tab').forEach(function(t){t.onclick=func
   var v=t.getAttribute('data-atab');tabSwitch('view-admin','data-atab',v);
   document.getElementById('atab-students').classList.toggle('hidden',v!=='students');
   document.getElementById('atab-faculty').classList.toggle('hidden',v!=='faculty');
+  document.getElementById('atab-queries').classList.toggle('hidden',v!=='queries');
+  if(v==='queries')loadAdmQueries();
 };});
+function timeAgo(ts){var s=Math.floor((Date.now()-ts)/1000);if(s<60)return s+'s ago';var m=Math.floor(s/60);if(m<60)return m+'m ago';var h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
+function loadAdmQueries(){api('/api/admin/queries',{token:admTok}).then(function(r){
+  if(!r.ok)return;
+  var badge=document.getElementById('admQBadge');
+  if(r.body.open>0){badge.textContent=r.body.open;badge.style.display='';}else badge.style.display='none';
+  document.getElementById('admQCount').textContent=r.body.rows.length+' queries · '+r.body.open+' open';
+  document.getElementById('admQRows').innerHTML=r.body.rows.map(function(q){
+    var pill=q.status==='open'?'<span class="pill pending">open</span>':'<span class="pill accepted">resolved</span>';
+    return '<tr><td class="mono">'+esc(q.id)+'</td><td>'+esc(q.name)+' <span class="mini mono">'+esc(q.reg)+'</span></td><td>'+esc(q.topic||'')+'</td><td class="wrap">'+esc(q.message||'')+'</td><td class="mini">'+timeAgo(q.createdAt)+'</td><td>'+pill+'</td><td><button class="btn sm" data-qid="'+esc(q.id)+'">'+(q.status==='open'?'Resolve':'Reopen')+'</button></td></tr>';
+  }).join('')||'<tr><td colspan="7" class="mini">No queries yet.</td></tr>';
+});}
+document.getElementById('admQRows').addEventListener('click',function(e){
+  var b=e.target.closest('[data-qid]');if(!b)return;
+  api('/api/admin/query-resolve',{method:'POST',token:admTok,body:{id:b.getAttribute('data-qid')}}).then(function(){loadAdmQueries();});
+});
 var admStuState={q:'',page:1,pages:1},admStuSeq=0;
 function loadAdmStudents(){
   var my=++admStuSeq;
@@ -848,6 +913,18 @@ document.querySelectorAll('input[type=password]').forEach(function(inp){
   b.onclick=function(){var show=inp.type==='password';inp.type=show?'text':'password';b.innerHTML=show?EYEOFF:EYE;b.setAttribute('aria-label',show?'Hide password':'Show password');inp.focus();};
   w.appendChild(b);
 });
+
+/* subtle 3D tilt on the role cards (pointer devices only) */
+if(window.matchMedia&&matchMedia('(prefers-reduced-motion: no-preference)').matches&&matchMedia('(pointer:fine)').matches){
+  document.querySelectorAll('.role').forEach(function(card){
+    card.addEventListener('mousemove',function(e){
+      var r=card.getBoundingClientRect();
+      var px=(e.clientX-r.left)/r.width-0.5, py=(e.clientY-r.top)/r.height-0.5;
+      card.style.transform='translateY(-5px) rotateX('+(-py*6).toFixed(2)+'deg) rotateY('+(px*7).toFixed(2)+'deg)';
+    });
+    card.addEventListener('mouseleave',function(){card.style.transform='';});
+  });
+}
 
 /* theme */
 var TH='opp_theme';
