@@ -128,6 +128,9 @@ function buildStudentArr() {
 }
 buildStudentArr();
 
+// distinct non-SCOPE SCHOOLS (keyed by school, so SMEC counts once) for the guide
+let OTHER_SCHOOLS = [...new Set(studentArr.filter((s) => !s.scope).map((s) => engine.schoolKey(s.school)))].sort();
+
 // paginate + optional substring search over a pre-lowercased haystack
 function pageOf(arr, q, page, size) {
   size = Math.min(200, Math.max(1, parseInt(size, 10) || 50));
@@ -172,7 +175,7 @@ function validateGroup(members) {
   if (scope.length !== 2) problems.push('Needs exactly 2 SCOPE members (has ' + scope.length + ').');
   if (other.length !== 3) problems.push('Needs exactly 3 other-school members (has ' + other.length + ').');
   if (unknown.length) problems.push(unknown.length + ' member(s) have an unknown branch code.');
-  const schools = other.map((p) => p.school);
+  const schools = other.map((p) => engine.schoolKey(p.school));   // key by school, not program
   if (schools.length && new Set(schools).size !== schools.length) problems.push('The 3 other-school members must each be from a different school.');
   return { valid: problems.length === 0, problems, people };
 }
@@ -295,6 +298,42 @@ const server = http.createServer(async (req, res) => {
     const ce = studentArrByReg.get(sess.reg); if (ce) ce.changed = true;
     persist();
     return sendJSON(res, 200, { ok: true });
+  }
+
+  // ---- STUDENT: directory of other students (names + reg + school). NO emails. ----
+  if (p === '/api/student/directory' && req.method === 'GET') {
+    if (!studentAuth(req)) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const r = pageOf(studentArr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
+    const rows = r.rows.map((e) => ({ reg: e.reg, name: e.name, school: e.school, scope: e.scope })); // no email
+    return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows });
+  }
+
+  // ---- STUDENT: live team composition ("jug filling"): which school slots are
+  //      filled, and which schools you may or may not still add. NO emails. ----
+  if (p === '/api/student/compose' && req.method === 'POST') {
+    if (!studentAuth(req)) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const { members } = await readBody(req);
+    const regs = [...new Set((members || []).map((m) => String(m).trim().toUpperCase().replace(/\s+/g, '')).filter(Boolean))];
+    const people = regs.map((reg) => {
+      const info = engine.schoolOf(reg.slice(2, 5), MAP);
+      const st = db.students[reg];
+      return { reg, name: st ? st.name : '', school: info.school, scope: info.scope, known: info.known, inRoster: !!st };
+    });
+    const scope = people.filter((x) => x.scope);
+    const other = people.filter((x) => !x.scope && x.known);
+    const usedSchools = [...new Set(other.map((x) => engine.schoolKey(x.school)))];
+    const remainingOtherSlots = Math.max(0, 3 - usedSchools.length);
+    const schools = OTHER_SCHOOLS.map((s) => ({
+      school: s, used: usedSchools.includes(s),
+      selectable: !usedSchools.includes(s) && remainingOtherSlots > 0,
+    }));
+    const v = validateGroup(regs);
+    return sendJSON(res, 200, {
+      count: regs.length, people,
+      scopeCount: scope.length, scopeNeeded: 2, canAddScope: scope.length < 2,
+      otherFilled: usedSchools.length, otherNeeded: 3, usedSchools, schools,
+      valid: regs.length === 5 && v.valid, problems: v.problems,
+    });
   }
 
   // ---- STUDENT: faculty directory (name, school, slots remaining). No emails. ----

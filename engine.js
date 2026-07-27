@@ -57,6 +57,11 @@ function schoolOf(code, map) {
   return { known: true, scope: !!e[1], school: e[0] };
 }
 
+// The SCHOOL a program belongs to, for the "different schools" rule. Programs
+// like "SMEC: Mechanical" and "SMEC: Mechatronics" are the same school (SMEC),
+// so distinctness must key on this prefix, not the full program label.
+function schoolKey(schoolLabel) { return String(schoolLabel).split(':')[0].trim(); }
+
 /*
  * buildRoster: clean the raw input and DROP duplicates.
  * The hash Set `seen` answers "already have this reg?" in O(1), so the whole
@@ -100,8 +105,9 @@ function formTeams(roster, map, opts) {
     const info = schoolOf(roster[i].code, map);
     if (info.scope) scope.push(roster[i]);
     else if (info.known) {
-      if (!buckets.has(info.school)) buckets.set(info.school, []);
-      buckets.get(info.school).push(roster[i]);
+      const key = schoolKey(info.school);              // bucket by SCHOOL, not program
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(roster[i]);
     }
   }
 
@@ -226,6 +232,6 @@ function synth(count, scopeFrac) {
 }
 
 // export for Node; attach to window for the browser
-const API = { DEFAULT_MAP, parseReg, schoolOf, buildRoster, formTeams, allocateFaculty, allocate, synth };
+const API = { DEFAULT_MAP, parseReg, schoolOf, schoolKey, buildRoster, formTeams, allocateFaculty, allocate, synth };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 if (typeof window !== 'undefined') window.AllocationEngine = API;

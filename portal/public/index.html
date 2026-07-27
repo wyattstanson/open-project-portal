@@ -6,30 +6,30 @@
 <title>Open Project Portal</title>
 <style>
   :root{
-    --bg:#f5f6f8; --surface:#ffffff; --surface-2:#f7f8fa; --raise:#ffffff;
-    --ink:#1a1d24; --ink-2:#4a5061; --ink-3:#7b8194; --line:#e5e7ee; --line-2:#d3d7e2;
-    --brand:#27408b; --brand-2:#3a5bc7; --brand-ink:#ffffff; --brand-wash:#eef2fb;
-    --good:#177245; --good-wash:#e6f2ec; --warn:#8a5a00; --warn-wash:#f6efdb;
-    --bad:#b02a1f; --bad-wash:#f7e6e4; --info-wash:#eaf0f9;
+    --bg:#edf0f0; --surface:#ffffff; --surface-2:#f3f6f5; --raise:#ffffff;
+    --ink:#0f1417; --ink-2:#4b555c; --ink-3:#869099; --line:#e1e6e6; --line-2:#ccd4d3;
+    --brand:#0d8b7e; --brand-2:#0a746a; --brand-ink:#ffffff; --brand-wash:#dcf1ed;
+    --good:#15803d; --good-wash:#e3f3e9; --warn:#9a5a00; --warn-wash:#f6ecd8;
+    --bad:#c62f28; --bad-wash:#f8e5e3; --info-wash:#e2f1ef;
     --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
-    --r1:6px; --r2:10px; --r3:14px;
-    --shadow:0 1px 2px rgba(20,24,40,.04), 0 2px 8px rgba(20,24,40,.05);
-    --shadow-2:0 4px 20px -6px rgba(20,24,40,.14);
+    --r1:7px; --r2:12px; --r3:16px;
+    --shadow:0 1px 2px rgba(16,22,26,.05), 0 6px 20px -10px rgba(16,22,26,.12);
+    --shadow-2:0 14px 40px -14px rgba(13,139,126,.28);
     --mono:"SFMono-Regular",ui-monospace,"Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
     --sans:"Inter","Segoe UI",Roboto,-apple-system,system-ui,"Helvetica Neue",Arial,sans-serif;
-    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+    --serif:"Inter","Segoe UI",Roboto,-apple-system,system-ui,"Helvetica Neue",Arial,sans-serif;
   }
   @media(prefers-color-scheme:dark){:root{
-    --bg:#0e1016; --surface:#171a22; --surface-2:#1d2029; --raise:#1f232d;
-    --ink:#e8eaf0; --ink-2:#a7adbe; --ink-3:#6d7385; --line:#282c37; --line-2:#373c4a;
-    --brand:#5f82df; --brand-2:#7695e8; --brand-ink:#0b0f18; --brand-wash:#182034;
-    --good:#4cbd80; --good-wash:#132c1e; --warn:#d3a54c; --warn-wash:#2e2612;
-    --bad:#e06a5e; --bad-wash:#301a17; --info-wash:#161d2c;
-    --shadow:0 1px 2px rgba(0,0,0,.3), 0 2px 10px rgba(0,0,0,.35);
-    --shadow-2:0 8px 30px -8px rgba(0,0,0,.6);
+    --bg:#090b0d; --surface:#12161a; --surface-2:#181d22; --raise:#1b2127;
+    --ink:#eaf0f0; --ink-2:#98a3a6; --ink-3:#5f6a6e; --line:#212a2d; --line-2:#313b3f;
+    --brand:#22c2ae; --brand-2:#43d8c4; --brand-ink:#04120f; --brand-wash:#0c2b27;
+    --good:#3ecf7f; --good-wash:#0f2e1c; --warn:#d6a54c; --warn-wash:#2e2612;
+    --bad:#e5675c; --bad-wash:#301a17; --info-wash:#0c2622;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 10px 30px -12px rgba(0,0,0,.65);
+    --shadow-2:0 18px 46px -14px rgba(0,0,0,.75);
   }}
-  :root[data-theme="light"]{--bg:#f5f6f8;--surface:#fff;--surface-2:#f7f8fa;--raise:#fff;--ink:#1a1d24;--ink-2:#4a5061;--ink-3:#7b8194;--line:#e5e7ee;--line-2:#d3d7e2;--brand:#27408b;--brand-2:#3a5bc7;--brand-ink:#fff;--brand-wash:#eef2fb;--good:#177245;--good-wash:#e6f2ec;--warn:#8a5a00;--warn-wash:#f6efdb;--bad:#b02a1f;--bad-wash:#f7e6e4;--info-wash:#eaf0f9;--shadow:0 1px 2px rgba(20,24,40,.04),0 2px 8px rgba(20,24,40,.05);--shadow-2:0 4px 20px -6px rgba(20,24,40,.14);}
-  :root[data-theme="dark"]{--bg:#0e1016;--surface:#171a22;--surface-2:#1d2029;--raise:#1f232d;--ink:#e8eaf0;--ink-2:#a7adbe;--ink-3:#6d7385;--line:#282c37;--line-2:#373c4a;--brand:#5f82df;--brand-2:#7695e8;--brand-ink:#0b0f18;--brand-wash:#182034;--good:#4cbd80;--good-wash:#132c1e;--warn:#d3a54c;--warn-wash:#2e2612;--bad:#e06a5e;--bad-wash:#301a17;--info-wash:#161d2c;--shadow:0 1px 2px rgba(0,0,0,.3),0 2px 10px rgba(0,0,0,.35);--shadow-2:0 8px 30px -8px rgba(0,0,0,.6);}
+  :root[data-theme="light"]{--bg:#edf0f0;--surface:#fff;--surface-2:#f3f6f5;--raise:#fff;--ink:#0f1417;--ink-2:#4b555c;--ink-3:#869099;--line:#e1e6e6;--line-2:#ccd4d3;--brand:#0d8b7e;--brand-2:#0a746a;--brand-ink:#fff;--brand-wash:#dcf1ed;--good:#15803d;--good-wash:#e3f3e9;--warn:#9a5a00;--warn-wash:#f6ecd8;--bad:#c62f28;--bad-wash:#f8e5e3;--info-wash:#e2f1ef;--shadow:0 1px 2px rgba(16,22,26,.05),0 6px 20px -10px rgba(16,22,26,.12);--shadow-2:0 14px 40px -14px rgba(13,139,126,.28);}
+  :root[data-theme="dark"]{--bg:#090b0d;--surface:#12161a;--surface-2:#181d22;--raise:#1b2127;--ink:#eaf0f0;--ink-2:#98a3a6;--ink-3:#5f6a6e;--line:#212a2d;--line-2:#313b3f;--brand:#22c2ae;--brand-2:#43d8c4;--brand-ink:#04120f;--brand-wash:#0c2b27;--good:#3ecf7f;--good-wash:#0f2e1c;--warn:#d6a54c;--warn-wash:#2e2612;--bad:#e5675c;--bad-wash:#301a17;--info-wash:#0c2622;--shadow:0 1px 2px rgba(0,0,0,.45),0 10px 30px -12px rgba(0,0,0,.65);--shadow-2:0 18px 46px -14px rgba(0,0,0,.75);}
 
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -178,6 +178,97 @@
   .pager{display:flex;align-items:center;gap:12px;margin-top:var(--s3);font-size:13px;color:var(--ink-2);flex-wrap:wrap;}
   .pager .count{margin-right:auto;}
   .mini{font-size:12px;color:var(--ink-3);}
+
+  /* ============ cooler layer: type, depth, motion ============ */
+  body{font-feature-settings:"cv02","cv03","cv04","ss01";}
+  .brand .mk{background:linear-gradient(145deg,var(--brand),color-mix(in srgb,var(--brand) 62%,#000));
+    box-shadow:0 2px 10px -2px color-mix(in srgb,var(--brand) 55%,transparent);font-family:var(--mono);font-weight:700;}
+  .brand .nm{font-weight:800;letter-spacing:-.025em;font-size:17.5px;}
+  .brand .nm small{font-family:var(--mono);font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--ink-3);}
+  .eyebrow{font-family:var(--mono);font-weight:600;letter-spacing:.04em;text-transform:none;
+    color:var(--brand-2);display:inline-flex;align-items:center;gap:7px;}
+  .eyebrow::before{content:"";width:16px;height:2px;border-radius:2px;background:var(--brand);}
+  .pagehead h1{font-weight:800;letter-spacing:-.03em;font-size:30px;line-height:1.05;}
+  h1{font-weight:800;letter-spacing:-.03em;}
+  .role h3,.card .hd h3{font-weight:700;letter-spacing:-.015em;}
+
+  /* landing hero glow */
+  #view-landing{position:relative;}
+  #view-landing::before{content:"";position:absolute;left:-10%;top:-90px;width:520px;height:320px;pointer-events:none;
+    background:radial-gradient(60% 60% at 40% 30%,color-mix(in srgb,var(--brand) 26%,transparent),transparent 70%);
+    filter:blur(20px);opacity:.6;z-index:0;}
+  #view-landing>*{position:relative;z-index:1;}
+  .pagehead h1{background:none;}
+
+  /* role cards: accent top-line that grows on hover + lift */
+  .role{position:relative;overflow:hidden;transition:transform .18s cubic-bezier(.2,.7,.2,1),box-shadow .18s,border-color .18s;}
+  .role::after{content:"";position:absolute;left:0;top:0;height:3px;width:34px;background:var(--brand);
+    border-radius:0 0 3px 0;transition:width .22s cubic-bezier(.2,.7,.2,1);}
+  .role:hover::after{width:100%;}
+  .role:hover{transform:translateY(-4px);box-shadow:var(--shadow-2);border-color:color-mix(in srgb,var(--brand) 35%,var(--line));}
+  .role .ic{background:var(--brand-wash);color:var(--brand);transition:transform .18s;}
+  .role:hover .ic{transform:scale(1.06) rotate(-3deg);}
+
+  /* buttons: firmer, springier */
+  .btn{transition:transform .12s cubic-bezier(.2,.7,.2,1),background .15s,border-color .15s,box-shadow .15s;}
+  .btn.pri{box-shadow:0 2px 12px -4px color-mix(in srgb,var(--brand) 60%,transparent);}
+  .btn.pri:hover{transform:translateY(-1px);box-shadow:0 6px 18px -6px color-mix(in srgb,var(--brand) 65%,transparent);}
+  .btn:active{transform:translateY(1px) scale(.99);}
+
+  /* animated tab underline */
+  .tab{position:relative;border-bottom:none!important;}
+  .tab::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;border-radius:2px;background:var(--brand);
+    transform:scaleX(0);transform-origin:center;transition:transform .2s cubic-bezier(.2,.7,.2,1);}
+  .tab.active::after{transform:scaleX(1);}
+  .tab.active{color:var(--brand-2);}
+
+  /* inputs + focus */
+  .input:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 22%,transparent);}
+  ::selection{background:color-mix(in srgb,var(--brand) 30%,transparent);}
+
+  /* card hover for interactive cards */
+  .card{transition:box-shadow .18s,border-color .18s;}
+
+  /* smooth view entrance */
+  main>section:not(.hidden){animation:viewin .32s cubic-bezier(.2,.7,.2,1);}
+  @keyframes viewin{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  .gcard{animation:viewin .3s cubic-bezier(.2,.7,.2,1) both;}
+
+  /* topbar refinement */
+  .topbar{background:color-mix(in srgb,var(--surface) 82%,transparent);}
+  .userchip{background:var(--brand-wash);border-color:color-mix(in srgb,var(--brand) 25%,var(--line));color:var(--brand-2);}
+  .userchip .av{background:var(--brand);color:var(--brand-ink);}
+
+  /* jug-filling guide */
+  .jug{display:flex;gap:8px;flex-wrap:wrap;}
+  .slot{flex:1;min-width:78px;border:1.5px dashed var(--line-2);border-radius:var(--r2);padding:10px;text-align:center;
+    transition:.18s;background:var(--surface-2);}
+  .slot.filled{border-style:solid;border-color:var(--brand);background:var(--brand-wash);}
+  .slot .k{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:700;}
+  .slot .v{font-family:var(--mono);font-weight:700;font-size:15px;margin-top:2px;}
+  .slot.filled .v{color:var(--brand-2);}
+  .schooltags{display:flex;flex-wrap:wrap;gap:7px;margin-top:2px;}
+  .stag{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:20px;border:1px solid var(--line);white-space:nowrap;
+    display:inline-flex;align-items:center;gap:6px;}
+  .stag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ink-3);}
+  .stag.open{background:var(--good-wash);color:var(--good);border-color:transparent;}
+  .stag.open::before{background:var(--good);}
+  .stag.used{background:var(--surface-2);color:var(--ink-3);text-decoration:line-through;opacity:.75;}
+  .stag.used::before{background:var(--ink-3);}
+  @media(max-width:560px){.pagehead h1{font-size:24px;}}
+
+  /* responsiveness: let grid/flex children shrink so wide tables scroll inside
+     their own container instead of pushing the whole page sideways */
+  .stack>*,.grid-2>*,.card .bd,.scrollx{min-width:0;}
+  #view-landing{overflow-x:clip;}
+  main{overflow-x:clip;}
+  @media(max-width:640px){
+    .topbar .in{height:auto;min-height:54px;padding-top:8px;padding-bottom:8px;flex-wrap:wrap;gap:8px;}
+    .brand .nm small{display:none;}
+    .brand .nm{font-size:15.5px;}
+    .topbar .right{gap:8px;}
+    .userchip{padding:4px 8px;font-size:12px;}
+  }
 </style>
 </head>
 <body>
@@ -251,11 +342,15 @@
           <div class="bd" id="stGroups"></div></div>
 
         <div class="grid-2">
-          <div class="card"><div class="hd"><h3>Submit or replace your group</h3></div>
+          <div class="card"><div class="hd"><h3>Build your group</h3><span class="mini" id="stComposeState" style="margin-left:auto"></span></div>
             <div class="bd">
-              <div class="field" style="margin-bottom:8px"><label>Five registration numbers, one per line (must include yours)</label>
+              <div class="field" style="margin-bottom:10px"><label>Five registration numbers, one per line (must include yours)</label>
                 <textarea class="input mono" id="stMembers" placeholder="24BCE2312"></textarea></div>
-              <div class="row"><button class="btn pri" id="stSubmit">Submit group</button><button class="btn sm" id="stFill">Fill a valid example</button></div>
+              <label class="mini" style="display:block;margin-bottom:6px;color:var(--ink-2)">Team composition</label>
+              <div class="jug" id="stJug"></div>
+              <div style="margin-top:12px"><label class="mini" style="display:block;margin-bottom:6px;color:var(--ink-2)">Schools you may still add (3 must be different, none SCOPE)</label>
+                <div class="schooltags" id="stSchoolTags"></div></div>
+              <div class="row" style="margin-top:14px"><button class="btn pri" id="stSubmit">Submit group</button><button class="btn sm" id="stFill">Fill a valid example</button></div>
               <div id="stMsg"></div>
             </div></div>
 
@@ -267,6 +362,16 @@
               <div id="pwMsg"></div>
             </div></div>
         </div>
+
+        <div class="card"><div class="hd"><h3>Find teammates</h3><span id="stDirCount" class="muted" style="margin-left:auto;font-size:12.5px"></span></div>
+          <div class="bd">
+            <div class="searchrow">
+              <input class="input" id="stDirSearch" placeholder="Search students by name or reg no.">
+            </div>
+            <div class="scrollx"><table class="dtable"><thead><tr><th>Reg no.</th><th>Name</th><th>School</th><th>Type</th><th></th></tr></thead><tbody id="stDirRows"></tbody></table></div>
+            <div class="pager"><span class="count" id="stDirPage"></span><button class="btn sm" id="stDirPrev">Prev</button><button class="btn sm" id="stDirNext">Next</button></div>
+            <p class="mini" style="margin-top:8px">No email addresses are shown. Use <b>Add</b> to drop someone into your group above.</p>
+          </div></div>
 
         <div class="card"><div class="hd"><h3>Faculty &amp; available slots</h3><span id="stFacCount" class="muted" style="margin-left:auto;font-size:12.5px"></span></div>
           <div class="bd">
@@ -412,7 +517,7 @@ document.getElementById('stLoginBtn').onclick=function(){
       document.getElementById('stMembers').value=r.body.reg+'\n';
       var fn=document.getElementById('stFirstLoginNote');
       if(!r.body.changedPassword)note(fn,'info','You are signing in with your initial password. Set your own below under <b>Account &amp; password</b>.');else fn.innerHTML='';
-      loadMyGroups();loadStudentFacDir();
+      loadMyGroups();loadStudentFacDir();loadStudentDir();composeGuide();
     }else note(document.getElementById('stLoginMsg'),'bad',esc(r.body.error));
   });
 };
@@ -430,6 +535,7 @@ document.getElementById('stFill').onclick=function(){
     var sch=Object.keys(by).slice(0,3);
     if(!sc.length||sch.length<3)return;
     document.getElementById('stMembers').value=[stReg,sc[0].reg,by[sch[0]][0].reg,by[sch[1]][0].reg,by[sch[2]][0].reg].join('\n');
+    composeGuide();
   });
 };
 document.getElementById('stSubmit').onclick=function(){
@@ -455,6 +561,52 @@ function loadStudentFacDir(){api('/api/faculty-directory',{token:stTok}).then(fu
     return '<tr><td>'+esc(f.name)+'</td><td>'+esc(f.school)+'</td><td><b style="color:'+col+'">'+f.slotsRemaining+'</b> <span class="mini">/ '+f.capacity+'</span></td></tr>';
   }).join('')||'<tr><td colspan="3" class="mini">No faculty.</td></tr>';
 });}
+
+// jug-filling composition guide
+function slotHtml(k,have,need){return '<div class="slot'+(have>=need?' filled':'')+'"><div class="k">'+esc(k)+'</div><div class="v">'+have+' / '+need+'</div></div>';}
+function composeGuide(){
+  var members=document.getElementById('stMembers').value.split(/\n+/).map(function(s){return s.trim();}).filter(Boolean);
+  api('/api/student/compose',{method:'POST',token:stTok,body:{members:members}}).then(function(r){
+    if(!r.ok)return;var b=r.body;
+    document.getElementById('stJug').innerHTML=slotHtml('SCOPE',b.scopeCount,b.scopeNeeded)+slotHtml('Other schools',b.otherFilled,b.otherNeeded)+slotHtml('Total',b.count,5);
+    document.getElementById('stSchoolTags').innerHTML=b.schools.map(function(s){
+      var cls=s.used?'used':(s.selectable?'open':'');
+      return '<span class="stag '+cls+'" title="'+esc(s.school)+'">'+esc(s.school.split(':')[0])+(s.used?' · in team':'')+'</span>';
+    }).join('');
+    var st=document.getElementById('stComposeState');
+    if(b.valid){st.textContent='ready to submit';st.style.color='var(--good)';}
+    else{st.textContent=b.count+' / 5 members';st.style.color='var(--ink-3)';}
+  });
+}
+var stComposeTimer;
+document.getElementById('stMembers').addEventListener('input',function(){clearTimeout(stComposeTimer);stComposeTimer=setTimeout(composeGuide,250);});
+
+// student directory (names + reg, NO emails), searchable + paginated
+var stDirState={q:'',page:1,pages:1},stDirSeq=0;
+function loadStudentDir(){
+  var my=++stDirSeq;
+  api('/api/student/directory?q='+encodeURIComponent(stDirState.q)+'&page='+stDirState.page+'&size=25',{token:stTok}).then(function(r){
+    if(my!==stDirSeq)return;if(!r.ok)return;stDirState.pages=r.body.pages;
+    document.getElementById('stDirCount').textContent=r.body.total.toLocaleString()+' students';
+    document.getElementById('stDirPage').textContent='Page '+r.body.page+' of '+r.body.pages;
+    document.getElementById('stDirRows').innerHTML=r.body.rows.map(function(s){
+      return '<tr><td class="mono">'+esc(s.reg)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.school.split(':')[0])+'</td><td>'+(s.scope?'<span class="pill scope">SCOPE</span>':'Other')+'</td><td><button class="btn sm" data-add="'+esc(s.reg)+'">Add</button></td></tr>';
+    }).join('')||'<tr><td colspan="5" class="mini">No matches.</td></tr>';
+  });
+}
+var stDirTimer;
+document.getElementById('stDirSearch').oninput=function(e){clearTimeout(stDirTimer);stDirTimer=setTimeout(function(){stDirState.q=e.target.value;stDirState.page=1;loadStudentDir();},220);};
+document.getElementById('stDirPrev').onclick=function(){if(stDirState.page>1){stDirState.page--;loadStudentDir();}};
+document.getElementById('stDirNext').onclick=function(){if(stDirState.page<stDirState.pages){stDirState.page++;loadStudentDir();}};
+document.getElementById('stDirRows').addEventListener('click',function(e){
+  var b=e.target.closest('[data-add]');if(!b)return;
+  var reg=b.getAttribute('data-add');
+  var ta=document.getElementById('stMembers');
+  var lines=ta.value.split(/\n+/).map(function(s){return s.trim().toUpperCase();}).filter(Boolean);
+  if(lines.indexOf(reg)>=0)return;
+  if(lines.length>=5){note(document.getElementById('stMsg'),'bad','Your group already has 5 members. Remove one first.');return;}
+  lines.push(reg);ta.value=lines.join('\n');composeGuide();
+});
 
 /* ---------------- faculty ---------------- */
 // tab switching
