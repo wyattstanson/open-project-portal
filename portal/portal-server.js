@@ -158,6 +158,18 @@ function findStudentByEmail(email) {
 }
 function seatsUsed(email) { return db.groups.filter((g) => g.status === 'accepted' && g.faculty === email).length; }
 
+// one-student-one-group: the active (non-rejected) group a reg belongs to, if any
+function activeGroupOf(reg) { return db.groups.find((g) => g.status !== 'rejected' && g.members.includes(reg)); }
+function groupedRegSet() {
+  const s = new Set();
+  for (const g of db.groups) if (g.status !== 'rejected') for (const r of g.members) s.add(r);
+  return s;
+}
+function nextGroupId() {
+  const maxN = db.groups.reduce((m, g) => Math.max(m, parseInt(String(g.id).replace(/\D/g, ''), 10) || 0), 0);
+  return 'G' + String(maxN + 1).padStart(4, '0');
+}
+
 // Independent server-side constraint check: 2 SCOPE + 3 distinct other schools.
 function validateGroup(members) {
   const seen = new Set();
@@ -311,7 +323,8 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/student/directory' && req.method === 'GET') {
     if (!studentAuth(req)) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
     const r = pageOf(studentArr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
-    const rows = r.rows.map((e) => ({ reg: e.reg, name: e.name, school: e.school, scope: e.scope })); // no email
+    const grouped = groupedRegSet();
+    const rows = r.rows.map((e) => ({ reg: e.reg, name: e.name, school: e.school, scope: e.scope, grouped: grouped.has(e.reg) })); // no email
     return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows });
   }
 
@@ -458,11 +471,25 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/student/submit' && req.method === 'POST') {
     const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
     const { members } = await readBody(req);
-    const regs = (members || []).map((m) => String(m).trim().toUpperCase().replace(/\s+/g, '')).filter(Boolean);
+    const regs = [...new Set((members || []).map((m) => String(m).trim().toUpperCase().replace(/\s+/g, '')).filter(Boolean))];
     if (!regs.includes(sess.reg)) return sendJSON(res, 422, { error: 'Your own registration number must be in the group.' });
+
+    // one student, one group. You may replace your own PENDING group; everyone
+    // else in the new group must be free (not already in another active group).
+    const mine = activeGroupOf(sess.reg);
+    if (mine && mine.status === 'accepted') return sendJSON(res, 409, { error: 'Your group is already accepted; it cannot be changed.' });
+    const clash = [];
+    for (const reg of regs) {
+      const gg = activeGroupOf(reg);
+      if (gg && gg !== mine) clash.push(reg);
+    }
+    if (clash.length) return sendJSON(res, 409, { error: 'Each student can be in only one group. Already in a group: ' + clash.join(', ') + '.' });
+
     const v = validateGroup(regs);
     if (!v.valid) return sendJSON(res, 422, { error: 'Group does not pass the constraints.', problems: v.problems });
-    const g = { id: 'G' + String(db.groups.length + 1).padStart(3, '0'), members: regs, status: 'pending', faculty: null, requestedFaculty: null, submittedBy: sess.reg, createdAt: Date.now() };
+
+    if (mine) db.groups = db.groups.filter((x) => x !== mine);   // replace the old pending group
+    const g = { id: nextGroupId(), members: regs, status: 'pending', faculty: null, requestedFaculty: null, submittedBy: sess.reg, createdAt: Date.now() };
     db.groups.push(g); persist();
     return sendJSON(res, 200, { ok: true, group: groupView(g, { selfReg: sess.reg }) });
   }
