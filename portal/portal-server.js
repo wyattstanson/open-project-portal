@@ -131,6 +131,8 @@ buildStudentArr();
 
 // distinct non-SCOPE SCHOOLS (keyed by school, so SMEC counts once) for the guide
 let OTHER_SCHOOLS = [...new Set(studentArr.filter((s) => !s.scope).map((s) => engine.schoolKey(s.school)))].sort();
+// all distinct branches/schools (incl. SCOPE) for the "sort by branch" filters
+let BRANCHES = [...new Set(studentArr.map((s) => engine.schoolKey(s.school)))].sort();
 
 // paginate + optional substring search over a pre-lowercased haystack
 function pageOf(arr, q, page, size) {
@@ -158,9 +160,15 @@ function findStudentByEmail(email) {
   return emailIndex.get(vault.hashEmail(email)) || null;   // O(1)
 }
 function seatsUsed(email) { return db.groups.filter((g) => g.status === 'accepted' && g.faculty === email).length; }
+// slots held: a selection (requested) OR an acceptance both consume an available slot
+function facultyLoad(email) { return db.groups.filter((g) => g.status !== 'rejected' && (g.faculty === email || g.requestedFaculty === email)).length; }
 
 // one-student-one-group: the active (non-rejected) group a reg belongs to, if any
 function activeGroupOf(reg) { return db.groups.find((g) => g.status !== 'rejected' && g.members.includes(reg)); }
+// consent: seeded groups (no consent map) are treated as already accepted
+function consentOf(g, reg) { if (!g.consent) return 'accepted'; return g.consent[reg] || 'pending'; }
+function groupReady(g) { return g.members.every((r) => consentOf(g, r) === 'accepted'); }
+function branchFilter(arr, branch) { return branch ? arr.filter((e) => engine.schoolKey(e.school) === branch) : arr; }
 function groupedRegSet() {
   const s = new Set();
   for (const g of db.groups) if (g.status !== 'rejected') for (const r of g.members) s.add(r);
@@ -205,6 +213,7 @@ function groupView(g, opts) {
   return {
     id: g.id, status: g.status, faculty: g.faculty, facultyName: asg ? asg.name : null, createdAt: g.createdAt,
     requestedFaculty: g.requestedFaculty || null, requestedFacultyName: rf ? rf.name : null, requestedFacultyId: rfIdx >= 0 ? rfIdx : null,
+    leader: g.submittedBy, ready: groupReady(g),
     valid: v.valid, problems: v.problems,
     members: v.people.map((p) => {
       const st = db.students[p.reg];
@@ -214,7 +223,8 @@ function groupView(g, opts) {
         const showReal = opts.reveal || (opts.selfReg && p.reg === opts.selfReg);
         email = showReal ? plain : vault.mask(plain || '');
       }
-      return { reg: p.reg, name: p.name, school: p.school, scope: p.scope, known: p.known, email };
+      return { reg: p.reg, name: p.name, school: p.school, scope: p.scope, known: p.known, email,
+        isLeader: g.submittedBy === p.reg, consent: consentOf(g, p.reg) };
     }),
   };
 }
@@ -261,10 +271,11 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/faculty/groups' && req.method === 'GET') {
     const sess = facultyAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as faculty first.' });
     const f = findFaculty(sess.email);
-    // groups that requested me, plus the open (unrequested) pending pool, plus mine
+    // a group only reaches faculty once every member has accepted (ready).
+    // Show groups that selected me (or my accepted ones), leader-approved.
     const groups = db.groups
       .filter((g) => g.faculty === sess.email ||
-        (g.status === 'pending' && (!g.requestedFaculty || g.requestedFaculty === sess.email)))
+        (g.status === 'pending' && groupReady(g) && (!g.requestedFaculty || g.requestedFaculty === sess.email)))
       .sort((a, b) => (b.requestedFaculty === sess.email ? 1 : 0) - (a.requestedFaculty === sess.email ? 1 : 0) || a.createdAt - b.createdAt)
       .map((g) => groupView(g, { reveal: true }));
     return sendJSON(res, 200, { groups, capacity: f.capacity, seatsUsed: seatsUsed(f.email) });
@@ -282,6 +293,7 @@ const server = http.createServer(async (req, res) => {
       const v = validateGroup(g.members);
       if (!v.valid) return sendJSON(res, 422, { error: 'Group does not pass the constraints.', problems: v.problems });
       if (g.requestedFaculty && g.requestedFaculty !== f.email) return sendJSON(res, 409, { error: 'This group selected a different faculty.' });
+      if (!groupReady(g)) return sendJSON(res, 409, { error: 'Not all members have accepted the group yet.' });
       if (seatsUsed(f.email) >= f.capacity) return sendJSON(res, 409, { error: 'No seats left. You are at capacity.' });
       g.status = 'accepted'; g.faculty = f.email;
     } else if (decision === 'reject') {
@@ -303,7 +315,9 @@ const server = http.createServer(async (req, res) => {
     }
     const tok = vault.newToken();
     sessions.set(tok, { role: 'student', reg: st.reg, name: st.name });
-    return sendJSON(res, 200, { token: tok, reg: st.reg, name: st.name, school: st.school, changedPassword: !!st.changedPassword });
+    const wasReset = !!st.passwordResetNotice;
+    if (wasReset) { st.passwordResetNotice = false; persist(); }   // one-time notice
+    return sendJSON(res, 200, { token: tok, reg: st.reg, name: st.name, school: st.school, changedPassword: !!st.changedPassword, passwordReset: wasReset });
   }
 
   // ---- STUDENT change password (writes a new one-way hash) ----
@@ -323,10 +337,11 @@ const server = http.createServer(async (req, res) => {
   // ---- STUDENT: directory of other students (names + reg + school). NO emails. ----
   if (p === '/api/student/directory' && req.method === 'GET') {
     if (!studentAuth(req)) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
-    const r = pageOf(studentArr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
+    const arr = branchFilter(studentArr, url.searchParams.get('branch'));
+    const r = pageOf(arr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
     const grouped = groupedRegSet();
     const rows = r.rows.map((e) => ({ reg: e.reg, name: e.name, school: e.school, scope: e.scope, grouped: grouped.has(e.reg) })); // no email
-    return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows });
+    return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows, branches: BRANCHES });
   }
 
   // ---- STUDENT: live team composition ("jug filling"): which school slots are
@@ -361,24 +376,30 @@ const server = http.createServer(async (req, res) => {
   //      `id` is the db index, used only as an opaque handle to select a faculty. ----
   if (p === '/api/faculty-directory' && req.method === 'GET') {
     if (!studentAuth(req)) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
-    const rows = db.faculty.map((f, id) => {
-      const used = seatsUsed(f.email);
-      return { id, name: f.name, school: f.school, capacity: f.capacity, slotsRemaining: f.capacity - used };
-    }).sort((a, b) => b.slotsRemaining - a.slotsRemaining);
-    return sendJSON(res, 200, { rows });
+    // slotsRemaining reflects live selections + acceptances, so picking a faculty
+    // immediately reduces their available slots for everyone else.
+    const rows = db.faculty.map((f, id) => ({
+      id, name: f.name, school: f.school, capacity: f.capacity,
+      slotsRemaining: Math.max(0, f.capacity - facultyLoad(f.email)),
+    })).sort((a, b) => a.school.localeCompare(b.school) || b.slotsRemaining - a.slotsRemaining);
+    return sendJSON(res, 200, { rows, branches: BRANCHES });
   }
 
-  // ---- STUDENT: select (request) a faculty for your group ----
+  // ---- STUDENT: select (request) a faculty for your group. Holds a slot. ----
   if (p === '/api/student/select-faculty' && req.method === 'POST') {
     const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
     const { facultyId } = await readBody(req);
     const g = db.groups.find((x) => x.members.includes(sess.reg) && x.status !== 'rejected');
     if (!g) return sendJSON(res, 404, { error: 'Submit your group first, then pick a faculty.' });
     if (g.status === 'accepted') return sendJSON(res, 409, { error: 'Your group is already accepted; faculty is locked.' });
+    if (g.submittedBy !== sess.reg) return sendJSON(res, 403, { error: 'Only the team leader can choose the faculty.' });
     let email = null, name = null;
     if (facultyId !== '' && facultyId != null) {
       const f = db.faculty[Number(facultyId)];
       if (!f) return sendJSON(res, 404, { error: 'Faculty not found.' });
+      // count this faculty's load excluding this group's own current hold
+      const otherLoad = db.groups.filter((x) => x !== g && x.status !== 'rejected' && (x.faculty === f.email || x.requestedFaculty === f.email)).length;
+      if (otherLoad >= f.capacity) return sendJSON(res, 409, { error: 'That faculty has no slots left. Please pick another.' });
       email = f.email; name = f.name;
     }
     g.requestedFaculty = email; persist();
@@ -388,9 +409,10 @@ const server = http.createServer(async (req, res) => {
   // ---- FACULTY: searchable, paginated student directory (real emails) ----
   if (p === '/api/faculty/students' && req.method === 'GET') {
     if (!facultyAuth(req)) return sendJSON(res, 401, { error: 'Sign in as faculty first.' });
-    const r = pageOf(studentArr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
+    const arr = branchFilter(studentArr, url.searchParams.get('branch'));
+    const r = pageOf(arr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
     const rows = r.rows.map((e) => ({ reg: e.reg, name: e.name, school: e.school, scope: e.scope, email: e.email }));
-    return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows });
+    return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows, branches: BRANCHES });
   }
 
   // ---- ADMIN login ----
@@ -408,18 +430,19 @@ const server = http.createServer(async (req, res) => {
   // ---- ADMIN: all students, searchable + paginated (email + initial password) ----
   if (p === '/api/admin/students' && req.method === 'GET') {
     if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
-    const r = pageOf(studentArr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
+    const arr = branchFilter(studentArr, url.searchParams.get('branch'));
+    const r = pageOf(arr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
     const rows = r.rows.map((e) => ({ reg: e.reg, name: e.name, school: e.school, scope: e.scope, email: e.email,
       initialPassword: e.changed ? null : initialStudentPw(e.name), changed: e.changed }));
-    return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows });
+    return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows, branches: BRANCHES });
   }
 
-  // ---- ADMIN: all faculty with slots + initial password ----
+  // ---- ADMIN: all faculty with slots (used = selections + acceptances) ----
   if (p === '/api/admin/faculty' && req.method === 'GET') {
     if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
     const rows = db.faculty.map((f) => {
-      const used = seatsUsed(f.email);
-      return { email: f.email, name: f.name, school: f.school, capacity: f.capacity, used, remaining: f.capacity - used, initialPassword: initialFacultyPw(f.email) };
+      const used = facultyLoad(f.email);
+      return { email: f.email, name: f.name, school: f.school, capacity: f.capacity, used, remaining: Math.max(0, f.capacity - used), initialPassword: initialFacultyPw(f.email) };
     });
     return sendJSON(res, 200, { rows });
   }
@@ -453,6 +476,7 @@ const server = http.createServer(async (req, res) => {
     const s = db.students[reg]; if (!s) return sendJSON(res, 404, { error: 'Student not found.' });
     const pw = initialStudentPw(s.name);
     s.passwordHash = vault.hashPassword(pw); s.changedPassword = false;
+    s.passwordResetNotice = true;   // student is told on their next login
     const e = studentArrByReg.get(reg); if (e) e.changed = false;
     persist();
     return sendJSON(res, 200, { ok: true, initialPassword: pw });
@@ -499,6 +523,8 @@ const server = http.createServer(async (req, res) => {
   // ---- STUDENT submit a group (must include yourself) ----
   if (p === '/api/student/submit' && req.method === 'POST') {
     const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const me = db.students[sess.reg];
+    if (!me || !me.scope) return sendJSON(res, 403, { error: 'Only a SCOPE student can create and lead a group.' });
     const { members } = await readBody(req);
     const regs = [...new Set((members || []).map((m) => String(m).trim().toUpperCase().replace(/\s+/g, '')).filter(Boolean))];
     if (!regs.includes(sess.reg)) return sendJSON(res, 422, { error: 'Your own registration number must be in the group.' });
@@ -518,9 +544,26 @@ const server = http.createServer(async (req, res) => {
     if (!v.valid) return sendJSON(res, 422, { error: 'Group does not pass the constraints.', problems: v.problems });
 
     if (mine) db.groups = db.groups.filter((x) => x !== mine);   // replace the old pending group
-    const g = { id: nextGroupId(), members: regs, status: 'pending', faculty: null, requestedFaculty: null, submittedBy: sess.reg, createdAt: Date.now() };
+    // leader (submitter, a SCOPE student) auto-accepts; every teammate must consent
+    const consent = {};
+    regs.forEach((r) => { consent[r] = r === sess.reg ? 'accepted' : 'pending'; });
+    const g = { id: nextGroupId(), members: regs, status: 'pending', faculty: null, requestedFaculty: null, submittedBy: sess.reg, consent, createdAt: Date.now() };
     db.groups.push(g); persist();
     return sendJSON(res, 200, { ok: true, group: groupView(g, {}) });
+  }
+
+  // ---- STUDENT accept / decline being part of their group ----
+  if (p === '/api/student/consent' && req.method === 'POST') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const { decision } = await readBody(req);
+    const g = activeGroupOf(sess.reg);
+    if (!g) return sendJSON(res, 404, { error: 'You are not in a group.' });
+    if (g.submittedBy === sess.reg) return sendJSON(res, 400, { error: 'You are the team leader; you cannot decline your own group.' });
+    if (g.status === 'accepted') return sendJSON(res, 409, { error: 'This group has already been approved.' });
+    if (!g.consent) g.consent = {};
+    g.consent[sess.reg] = decision === 'accept' ? 'accepted' : 'declined';
+    persist();
+    return sendJSON(res, 200, { ok: true, consent: g.consent[sess.reg], ready: groupReady(g) });
   }
 
   // ---- roster (masked, no emails) so the student form can pick real regs ----

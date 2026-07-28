@@ -461,7 +461,8 @@
         <div class="card"><div class="hd"><h3>Find teammates</h3><span id="stDirCount" class="muted" style="margin-left:auto;font-size:12.5px"></span></div>
           <div class="bd">
             <div class="searchrow">
-              <input class="input" id="stDirSearch" placeholder="Search students by name or reg no.">
+              <input class="input" id="stDirSearch" placeholder="Search students by name or reg no." style="max-width:240px">
+              <select class="sel" id="stDirBranch" style="min-width:150px"><option value="">All branches</option></select>
             </div>
             <div class="scrollx"><table class="dtable"><thead><tr><th>Reg no.</th><th>Name</th><th>School</th><th>Type</th><th></th></tr></thead><tbody id="stDirRows"></tbody></table></div>
             <div class="pager"><span class="count" id="stDirPage"></span><button class="btn sm" id="stDirPrev">Prev</button><button class="btn sm" id="stDirNext">Next</button></div>
@@ -621,9 +622,13 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return
 function note(el,kind,html){el.className='note '+kind;el.innerHTML=html;}
 function problemList(ps){return ps&&ps.length?'<ul><li>'+ps.map(esc).join('</li><li>')+'</li></ul>':'';}
 
+var CROWN='<svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-1px;fill:var(--warn)" title="Team leader"><path d="M3 8l3.6 3.1L12 5l5.4 6.1L21 8l-1.4 9.5a1 1 0 01-1 .5H5.4a1 1 0 01-1-.5L3 8z"/></svg>';
 function memberRow(m){
+  var crown=m.isLeader?CROWN+' ':'';
+  var cons=m.consent==='pending'?' <span class="pill pending" style="font-size:10px;padding:1px 7px">awaiting</span>':
+           m.consent==='declined'?' <span class="pill rejected" style="font-size:10px;padding:1px 7px">declined</span>':'';
   return '<div class="m '+(m.scope?'scope':'')+'"><span class="reg">'+esc(m.reg)+'</span>'+
-    '<span class="nm">'+esc(m.name)+(m.scope?' &middot; SCOPE':'')+'</span>'+
+    '<span class="nm">'+crown+esc(m.name)+(m.scope?' &middot; SCOPE':'')+cons+'</span>'+
     '<span class="em">'+esc(m.email||'')+'</span></div>';
 }
 function statusPill(s){return '<span class="pill '+s+' dot">'+s+'</span>';}
@@ -639,7 +644,9 @@ document.getElementById('stLoginBtn').onclick=function(){
       setUser(r.body.name);
       document.getElementById('stMembers').value=r.body.reg+'\n';
       var fn=document.getElementById('stFirstLoginNote');
-      if(!r.body.changedPassword)note(fn,'info','You are signing in with your initial password. Set your own below under <b>Account &amp; password</b>.');else fn.innerHTML='';
+      if(r.body.passwordReset){note(fn,'bad','Your password was reset by the admin to your default (full name, lowercase, no spaces). Please set a new one below under <b>Account &amp; password</b>.');toast('Your password was reset by admin');}
+      else if(!r.body.changedPassword)note(fn,'info','You are signing in with your initial password. Set your own below under <b>Account &amp; password</b>.');
+      else fn.innerHTML='';
       loadMyGroups();loadStudentFacDir();loadStudentDir();composeGuide();
     }else note(document.getElementById('stLoginMsg'),'bad',esc(r.body.error));
   });
@@ -648,7 +655,8 @@ function loadMyGroups(){api('/api/student/mygroups',{token:stTok}).then(function
   if(!r.ok)return;
   document.getElementById('stGroupCount').textContent=r.body.groups.length?(r.body.groups.length+' group'+(r.body.groups.length>1?'s':'')):'';
   document.getElementById('stGroups').innerHTML=r.body.groups.map(function(g){
-    return '<div style="margin-bottom:14px"><div class="spread" style="margin-bottom:10px"><span class="mono" style="font-weight:700;color:var(--ink-2)">'+esc(g.id)+'</span><span class="row">'+qualPill(g.valid)+statusPill(g.status)+'</span></div><div class="members">'+g.members.map(memberRow).join('')+'</div>'+(g.valid?'':'<div class="note bad">'+problemList(g.problems)+'</div>')+facultyPickerHtml(g)+'</div>';
+    var ready=g.status==='accepted'?'':(g.ready?'<span class="pill accepted">all accepted</span>':'<span class="pill pending">awaiting members</span>');
+    return '<div style="margin-bottom:14px"><div class="spread" style="margin-bottom:10px"><span class="mono" style="font-weight:700;color:var(--ink-2)">'+esc(g.id)+'</span><span class="row">'+qualPill(g.valid)+statusPill(g.status)+ready+'</span></div><div class="members">'+g.members.map(memberRow).join('')+'</div>'+(g.valid?'':'<div class="note bad">'+problemList(g.problems)+'</div>')+consentPromptHtml(g)+facultyPickerHtml(g)+'</div>';
   }).join('')||'<p class="muted">You are not in a group yet. Submit one below.</p>';
 });}
 document.getElementById('stFill').onclick=function(){
@@ -688,22 +696,49 @@ function loadStudentFacDir(){return api('/api/faculty-directory',{token:stTok}).
 });}
 function facultyOptions(selId){
   var opts='<option value="">— choose a faculty —</option>';
-  (facDirData||[]).forEach(function(f){
-    var mine=(selId!=null&&f.id===selId);
-    var dis=(f.slotsRemaining<=0&&!mine)?' disabled':'';
-    opts+='<option value="'+f.id+'"'+(mine?' selected':'')+dis+'>'+esc(f.name)+' · '+esc(f.school)+' · '+f.slotsRemaining+' slot'+(f.slotsRemaining===1?'':'s')+'</option>';
+  var byBranch={};
+  (facDirData||[]).forEach(function(f){(byBranch[f.school]||(byBranch[f.school]=[])).push(f);});
+  Object.keys(byBranch).sort().forEach(function(br){
+    opts+='<optgroup label="'+esc(br)+'">';
+    byBranch[br].forEach(function(f){
+      var mine=(selId!=null&&f.id===selId);
+      var dis=(f.slotsRemaining<=0&&!mine)?' disabled':'';
+      opts+='<option value="'+f.id+'"'+(mine?' selected':'')+dis+'>'+esc(f.name)+' · '+f.slotsRemaining+' slot'+(f.slotsRemaining===1?'':'s')+' left</option>';
+    });
+    opts+='</optgroup>';
   });
   return opts;
 }
+function myMember(g){for(var i=0;i<g.members.length;i++){if(g.members[i].reg===stReg)return g.members[i];}return null;}
+function consentPromptHtml(g){
+  var mine=myMember(g);
+  if(!mine||mine.isLeader||g.status==='accepted')return '';
+  if(mine.consent==='pending')return '<div class="note info" style="margin-top:10px">You were added to this group by the leader. Do you accept?<div class="row" style="margin-top:9px"><button class="btn sm pri" data-consent="accept">Accept</button><button class="btn sm" data-consent="decline">Decline</button></div></div>';
+  if(mine.consent==='declined')return '<div class="note bad" style="margin-top:10px">You declined this group. <button class="btn sm" data-consent="accept" style="margin-left:6px">Change to accept</button></div>';
+  return '';
+}
 function facultyPickerHtml(g){
-  if(g.status==='accepted')return '<div class="pickrow"><span class="lab2">Faculty</span><span class="assigned">✓ Approved by '+esc(g.facultyName||'')+'</span></div>';
+  if(g.status==='accepted')return '<div class="pickrow"><span class="lab2">Faculty</span><span class="assigned">Approved by '+esc(g.facultyName||'')+'</span></div>';
+  var isLeader=(g.leader===stReg);
+  if(!isLeader){
+    var t=g.requestedFacultyName?('Leader selected <b>'+esc(g.requestedFacultyName)+'</b>'):'Your team leader will choose the faculty';
+    return '<div class="pickrow"><span class="lab2">Faculty</span><span class="mini">'+t+'</span></div>';
+  }
+  if(!g.ready)return '<div class="pickrow"><span class="lab2">Faculty</span><span class="mini">All members must accept before the group can go to a faculty.</span></div>';
   var status=g.requestedFacultyName?'<span class="mini">Selected <b>'+esc(g.requestedFacultyName)+'</b> · awaiting approval</span>':'<span class="mini">No faculty selected yet</span>';
   return '<div class="pickrow"><span class="lab2">Select faculty</span><select class="sel fpick">'+facultyOptions(g.requestedFacultyId)+'</select></div><div style="margin-top:7px">'+status+'</div>';
 }
 document.getElementById('stGroups').addEventListener('change',function(e){
   var s=e.target.closest('select.fpick');if(!s)return;
   api('/api/student/select-faculty',{method:'POST',token:stTok,body:{facultyId:s.value}}).then(function(r){
-    if(r.ok){toast(r.body.requestedFacultyName?('Faculty selected: '+r.body.requestedFacultyName):'Faculty cleared');loadMyGroups();}
+    if(r.ok){toast(r.body.requestedFacultyName?('Faculty selected: '+r.body.requestedFacultyName):'Faculty cleared');loadStudentFacDir();}
+    else toast(r.body.error);
+  });
+});
+document.getElementById('stGroups').addEventListener('click',function(e){
+  var b=e.target.closest('[data-consent]');if(!b)return;
+  api('/api/student/consent',{method:'POST',token:stTok,body:{decision:b.getAttribute('data-consent')}}).then(function(r){
+    if(r.ok){toast(b.getAttribute('data-consent')==='accept'?'You accepted the group':'You declined the group');loadStudentFacDir();}
     else toast(r.body.error);
   });
 });
@@ -728,11 +763,13 @@ var stComposeTimer;
 document.getElementById('stMembers').addEventListener('input',function(){clearTimeout(stComposeTimer);stComposeTimer=setTimeout(composeGuide,250);});
 
 // student directory (names + reg, NO emails), searchable + paginated
-var stDirState={q:'',page:1,pages:1},stDirSeq=0;
+var stDirState={q:'',branch:'',page:1,pages:1},stDirSeq=0,stBranchesLoaded=false;
 function loadStudentDir(){
   var my=++stDirSeq;
-  api('/api/student/directory?q='+encodeURIComponent(stDirState.q)+'&page='+stDirState.page+'&size=25',{token:stTok}).then(function(r){
+  api('/api/student/directory?q='+encodeURIComponent(stDirState.q)+'&branch='+encodeURIComponent(stDirState.branch)+'&page='+stDirState.page+'&size=25',{token:stTok}).then(function(r){
     if(my!==stDirSeq)return;if(!r.ok)return;stDirState.pages=r.body.pages;
+    if(!stBranchesLoaded&&r.body.branches){stBranchesLoaded=true;
+      document.getElementById('stDirBranch').innerHTML='<option value="">All branches</option>'+r.body.branches.map(function(b){return '<option value="'+esc(b)+'">'+esc(b)+'</option>';}).join('');}
     document.getElementById('stDirCount').textContent=r.body.total.toLocaleString()+' students';
     document.getElementById('stDirPage').textContent='Page '+r.body.page+' of '+r.body.pages;
     document.getElementById('stDirRows').innerHTML=r.body.rows.map(function(s){
@@ -743,6 +780,7 @@ function loadStudentDir(){
 }
 var stDirTimer;
 document.getElementById('stDirSearch').oninput=function(e){clearTimeout(stDirTimer);stDirTimer=setTimeout(function(){stDirState.q=e.target.value;stDirState.page=1;loadStudentDir();},220);};
+document.getElementById('stDirBranch').onchange=function(e){stDirState.branch=e.target.value;stDirState.page=1;loadStudentDir();};
 document.getElementById('stDirPrev').onclick=function(){if(stDirState.page>1){stDirState.page--;loadStudentDir();}};
 document.getElementById('stDirNext').onclick=function(){if(stDirState.page<stDirState.pages){stDirState.page++;loadStudentDir();}};
 document.getElementById('stDirRows').addEventListener('click',function(e){
