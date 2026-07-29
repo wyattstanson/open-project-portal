@@ -18,6 +18,10 @@
  * ============================================================================
  */
 'use strict';
+// Widen the libuv thread pool BEFORE anything touches it, so many password
+// hashes (scrypt) and file writes run in parallel instead of queueing 4-at-a-time.
+// This is what keeps thousands of concurrent logins from stalling each other.
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '64';
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -46,17 +50,20 @@ function persistNow() {
 // store dirty and flush at most once every 400ms, off the request path. For a
 // truly large deployment this JSON store is swapped for SQLite/Postgres, but the
 // server code above it does not change (same read/write calls).
-let dirty = false, flushQueued = false;
+let dirty = false, flushQueued = false, flushing = false;
+function flush() {
+  if (flushing || !dirty) { flushQueued = false; return; }
+  dirty = false; flushing = true; flushQueued = false;
+  // write to a temp file then rename = atomic, never leaves a half-written db
+  const tmp = DB_FILE + '.tmp';
+  fs.promises.writeFile(tmp, JSON.stringify(db)).then(() => fs.promises.rename(tmp, DB_FILE))
+    .catch(() => {}).finally(() => { flushing = false; if (dirty) persist(); });
+}
 function persist() {
   dirty = true;
-  if (flushQueued) return;
+  if (flushQueued || flushing) return;
   flushQueued = true;
-  setTimeout(() => {
-    flushQueued = false;
-    if (!dirty) return;
-    dirty = false;
-    fs.promises.writeFile(DB_FILE, JSON.stringify(db)).catch(() => {});
-  }, 400);
+  setTimeout(flush, 800);   // coalesce bursts; at 5k concurrent this is ~1 write/sec
 }
 
 // ---- seed the store on first run, from data/sample-students.csv if present ----
@@ -64,7 +71,7 @@ function seed() {
   const faculty = [{
     email: 'teacher@domain',
     name: 'Dr. Demo Faculty',
-    passHash: vault.hashPassword('teach123'),   // DEMO credential
+    passHash: vault.hashPasswordSync('teach123'),   // DEMO credential (sync: startup path)
     capacity: 5,
   }];
   const csv = path.join(__dirname, 'data', 'sample-students.csv');
@@ -261,7 +268,7 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/faculty/login' && req.method === 'POST') {
     const { email, password } = await readBody(req);
     const f = findFaculty(email);
-    if (!f || !vault.verifyPassword(password, f.passHash)) return sendJSON(res, 401, { error: 'Invalid credentials.' });
+    if (!f || !(await vault.verifyPassword(password, f.passHash))) return sendJSON(res, 401, { error: 'Invalid credentials.' });
     const tok = vault.newToken();
     sessions.set(tok, { role: 'faculty', email: f.email, name: f.name });
     return sendJSON(res, 200, { token: tok, name: f.name, email: f.email, capacity: f.capacity, seatsUsed: seatsUsed(f.email) });
@@ -310,9 +317,8 @@ const server = http.createServer(async (req, res) => {
     const raw = String(body.reg || body.email || body.id || '').trim();
     const password = body.password;
     const st = raw.includes('@') ? findStudentByEmail(raw) : db.students[raw.toUpperCase().replace(/\s+/g, '')];
-    if (!st || !st.passwordHash || !vault.verifyPassword(password || '', st.passwordHash)) {
-      return sendJSON(res, 401, { error: 'Incorrect registration number or password.' });
-    }
+    const ok = st && st.passwordHash && await vault.verifyPassword(password || '', st.passwordHash);
+    if (!ok) return sendJSON(res, 401, { error: 'Incorrect registration number or password.' });
     const tok = vault.newToken();
     sessions.set(tok, { role: 'student', reg: st.reg, name: st.name });
     const wasReset = !!st.passwordResetNotice;
@@ -325,9 +331,9 @@ const server = http.createServer(async (req, res) => {
     const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in first.' });
     const st = db.students[sess.reg]; if (!st) return sendJSON(res, 404, { error: 'Account not found.' });
     const { currentPassword, newPassword } = await readBody(req);
-    if (!vault.verifyPassword(currentPassword || '', st.passwordHash)) return sendJSON(res, 403, { error: 'Current password is incorrect.' });
+    if (!(await vault.verifyPassword(currentPassword || '', st.passwordHash))) return sendJSON(res, 403, { error: 'Current password is incorrect.' });
     if (!newPassword || String(newPassword).length < 6) return sendJSON(res, 400, { error: 'New password must be at least 6 characters.' });
-    st.passwordHash = vault.hashPassword(newPassword);   // old password is unrecoverable
+    st.passwordHash = await vault.hashPassword(newPassword);   // old password is unrecoverable
     st.changedPassword = true;
     const ce = studentArrByReg.get(sess.reg); if (ce) ce.changed = true;
     persist();
@@ -419,9 +425,8 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/admin/login' && req.method === 'POST') {
     const { username, password } = await readBody(req);
     const a = db.admin;
-    if (!a || String(username || '').toLowerCase() !== a.username || !vault.verifyPassword(password || '', a.passHash)) {
-      return sendJSON(res, 401, { error: 'Incorrect username or password.' });
-    }
+    if (!a || String(username || '').toLowerCase() !== a.username) return sendJSON(res, 401, { error: 'Incorrect username or password.' });
+    if (!(await vault.verifyPassword(password || '', a.passHash))) return sendJSON(res, 401, { error: 'Incorrect username or password.' });
     const tok = vault.newToken();
     sessions.set(tok, { role: 'admin', username: a.username });
     return sendJSON(res, 200, { token: tok, username: a.username });
@@ -475,7 +480,7 @@ const server = http.createServer(async (req, res) => {
     const { reg } = await readBody(req);
     const s = db.students[reg]; if (!s) return sendJSON(res, 404, { error: 'Student not found.' });
     const pw = initialStudentPw(s.name);
-    s.passwordHash = vault.hashPassword(pw); s.changedPassword = false;
+    s.passwordHash = await vault.hashPassword(pw); s.changedPassword = false;
     s.passwordResetNotice = true;   // student is told on their next login
     const e = studentArrByReg.get(reg); if (e) e.changed = false;
     persist();
@@ -491,6 +496,19 @@ const server = http.createServer(async (req, res) => {
     const q = { id: 'Q' + String(db.queries.length + 1).padStart(4, '0'), reg: sess.reg, name: sess.name, topic: t, message: m, status: 'open', createdAt: Date.now() };
     db.queries.push(q); persist();
     return sendJSON(res, 200, { ok: true, id: q.id });
+  }
+
+  // ---- PUBLIC: forgot password -> files a reset request for the admin.
+  //      Always returns ok so it can't be used to probe which regs exist. ----
+  if (p === '/api/request-reset' && req.method === 'POST') {
+    const { reg } = await readBody(req);
+    const key = String(reg || '').trim().toUpperCase().replace(/\s+/g, '');
+    const st = db.students[key];
+    if (st && !db.queries.some((q) => q.reg === key && q.topic === 'Password reset request' && q.status === 'open')) {
+      db.queries.push({ id: 'Q' + String(db.queries.length + 1).padStart(4, '0'), reg: key, name: st.name, topic: 'Password reset request', message: 'Student used "Forgot password" and needs a reset.', status: 'open', createdAt: Date.now() });
+      persist();
+    }
+    return sendJSON(res, 200, { ok: true });
   }
 
   // ---- ADMIN: view student queries ----

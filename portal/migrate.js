@@ -17,7 +17,7 @@ db.faculty.forEach((f, i) => {
   if (!f.school) f.school = f.email === 'teacher@domain' ? 'SCOPE' : DEPTS[i % DEPTS.length];
 });
 if (!db.admin) {
-  db.admin = { username: 'admin', passHash: vault.hashPassword('admin@123') };
+  db.admin = { username: 'admin', passHash: vault.hashPasswordSync('admin@123') };
 }
 
 fs.writeFileSync(DB, JSON.stringify(db));

@@ -47,6 +47,54 @@ The `-v` mount keeps `db.json` on the host so data persists across restarts.
 Both detect the `Procfile` (`web: node portal/portal-server.js`). Add `VAULT_KEY`
 as a variable and attach a small volume at `portal/data`.
 
+## Option D: VIT's own server (recommended for the real test)
+
+Any Linux box with Docker, or with Node 18+, runs this. On the server:
+
+```
+git clone <your repo>
+cd vit-open-project
+docker compose up -d --build      # serves on :4000
+```
+
+Then point nginx/Apache at `http://127.0.0.1:4000` for TLS and a domain. No
+Node/npm knowledge needed on the box beyond Docker. Without Docker:
+`UV_THREADPOOL_SIZE=64 node portal/portal-server.js`.
+
+## Running it for 5,000 concurrent students
+
+What the code already does for scale:
+- **Password hashing is async** (scrypt on the libuv thread pool), so a login
+  rush never freezes the server. 100 simultaneous logins finish in well under a
+  second; the event loop stays free for everyone else.
+- **UV_THREADPOOL_SIZE=64** so 64 hashes run at once instead of 4.
+- **Slot allocation is atomic** in the single Node process (check-and-set with no
+  await between), so two students can never grab the same last faculty slot.
+- **Writes are coalesced and atomic** (temp-file + rename), off the request path.
+
+Sizing: a single instance with **2-4 vCPU and 2-4 GB RAM** comfortably serves a
+few thousand students whose traffic is mostly reads plus occasional writes (which
+is exactly this workload). Render's FREE tier (0.1 shared CPU) will NOT do it —
+use a paid instance or a real VM/VIT server.
+
+## The honest next step for true production scale + a proper DBMS
+
+This build keeps all state in memory with a JSON snapshot on disk. That is fast
+and simple, but it is **single-instance**: you cannot run several copies behind a
+load balancer, because each copy would have its own state. For horizontal scale
+and durability you move the store to **PostgreSQL**:
+
+1. Tables: `students`, `faculty`, `groups`, `group_members`, `consents`,
+   `queries`, `admin`. The team-formation/constraint logic in `engine.js` stays
+   unchanged (it is pure JS over rows).
+2. Replace the `db.*` in-memory reads/writes in `portal-server.js` with SQL. The
+   endpoints and their shapes do not change, only the data layer beneath them.
+3. Run N stateless instances behind nginx; Postgres handles concurrency and the
+   atomic slot check becomes a single `UPDATE ... WHERE slots_used < capacity`.
+
+That migration is a focused, self-contained piece of work. Connect a Postgres
+instance (VIT's, or a managed one) and it can be done next.
+
 ## Loading your real roster
 
 Put your CSV (`reg,name,email`) anywhere and run:

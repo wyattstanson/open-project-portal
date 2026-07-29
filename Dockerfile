@@ -5,6 +5,7 @@ WORKDIR /app
 COPY . .
 ENV PORT=4000
 ENV NODE_ENV=production
+ENV UV_THREADPOOL_SIZE=64
 EXPOSE 4000
 # no npm install needed: the app uses only Node built-ins
 CMD ["node", "portal/portal-server.js"]

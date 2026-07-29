@@ -86,19 +86,43 @@ function mask(email) {
   return s[0] + '****' + s.slice(at);
 }
 
-// ---- password hashing (for faculty accounts) ----
-function hashPassword(pw) {
+// ---- password hashing ----
+// SYNC variants: only for the offline generator/importer scripts.
+function hashPasswordSync(pw) {
   const salt = crypto.randomBytes(16);
   const dk = crypto.scryptSync(String(pw), salt, 32);
   return salt.toString('hex') + ':' + dk.toString('hex');
 }
-function verifyPassword(pw, stored) {
+function verifyPasswordSync(pw, stored) {
   try {
     const [s, h] = String(stored).split(':');
     const dk = crypto.scryptSync(String(pw), Buffer.from(s, 'hex'), 32);
     return crypto.timingSafeEqual(dk, Buffer.from(h, 'hex'));
   } catch (e) { return false; }
 }
+// ASYNC variants: used by the live server so scrypt runs on the libuv thread
+// pool and NEVER blocks the event loop. This is what lets thousands of logins
+// happen at once without the whole server stalling.
+function hashPassword(pw) {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16);
+    crypto.scrypt(String(pw), salt, 32, (err, dk) => {
+      if (err) reject(err); else resolve(salt.toString('hex') + ':' + dk.toString('hex'));
+    });
+  });
+}
+function verifyPassword(pw, stored) {
+  return new Promise((resolve) => {
+    try {
+      const [s, h] = String(stored).split(':');
+      const hb = Buffer.from(h, 'hex');
+      crypto.scrypt(String(pw), Buffer.from(s, 'hex'), 32, (err, dk) => {
+        if (err) { resolve(false); return; }
+        try { resolve(dk.length === hb.length && crypto.timingSafeEqual(dk, hb)); } catch (e) { resolve(false); }
+      });
+    } catch (e) { resolve(false); }
+  });
+}
 function newToken() { return crypto.randomBytes(24).toString('hex'); }
 
-module.exports = { encrypt, decrypt, mask, hashEmail, hashPassword, verifyPassword, newToken, selectKeyFor };
+module.exports = { encrypt, decrypt, mask, hashEmail, hashPassword, verifyPassword, hashPasswordSync, verifyPasswordSync, newToken, selectKeyFor };

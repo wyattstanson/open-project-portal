@@ -60,7 +60,7 @@ function loadFromCSV(file, opts) {
       reg: p.reg, name, school: info.school, scope: info.scope,
       email: email ? vault.encrypt(email) : null,          // encrypted at rest
       emailHash: email ? vault.hashEmail(email) : null,     // for login lookup
-      passwordHash: vault.hashPassword(pw),                 // scrypt, one-way
+      passwordHash: vault.hashPasswordSync(pw),                 // scrypt, one-way
       changedPassword: false,
     };
     order.push(p.reg);
@@ -85,7 +85,7 @@ if (require.main === module) {
   if (!file) { console.error('usage: node dataset.js <students.csv>'); process.exit(1); }
   const DB = path.join(__dirname, 'data', 'db.json');
   const base = loadFromCSV(file, { groups: 8 });
-  let faculty = [{ email: 'teacher@domain', name: 'Dr. Demo Faculty', passHash: vault.hashPassword('teach123'), capacity: 5 }];
+  let faculty = [{ email: 'teacher@domain', name: 'Dr. Demo Faculty', passHash: vault.hashPasswordSync('teach123'), capacity: 5 }];
   try { faculty = JSON.parse(fs.readFileSync(DB, 'utf8')).faculty || faculty; } catch (e) {}
   fs.mkdirSync(path.dirname(DB), { recursive: true });
   fs.writeFileSync(DB, JSON.stringify({ students: base.students, groups: base.groups, faculty }, null, 2));

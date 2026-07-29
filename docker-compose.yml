@@ -1,0 +1,18 @@
+# Run the portal on ANY server (VIT's included) with one command:
+#   docker compose up -d --build
+# It listens on port 4000. Put nginx/Apache in front for TLS + a domain.
+services:
+  portal:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      - UV_THREADPOOL_SIZE=64          # parallel password hashing under load
+      # - VAULT_KEY=<64-hex>           # set for real data; committed key is demo-only
+    volumes:
+      - portal-data:/app/portal/data   # persists the database across restarts
+    restart: unless-stopped
+volumes:
+  portal-data:
