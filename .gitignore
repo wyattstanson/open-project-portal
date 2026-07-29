@@ -16,3 +16,8 @@ node_modules
 # generated presentation exports (regenerate with extract-roster.js)
 portal/data/students-list.csv
 portal/data/faculty-list.csv
+
+# SQLite runtime database (rebuilt from db.json on first boot; the volume keeps it)
+portal/data/portal.db
+portal/data/portal.db-wal
+portal/data/portal.db-shm

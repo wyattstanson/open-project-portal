@@ -10,11 +10,13 @@ services:
     plan: free
     region: singapore          # closest to India; change if you prefer
     buildCommand: npm install   # no dependencies, effectively a no-op
-    startCommand: node portal/portal-server.js
+    startCommand: node --experimental-sqlite portal/portal-server.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
-        value: "20"
+        value: "22"
+      - key: UV_THREADPOOL_SIZE
+        value: "64"
 
 # Free plan: the disk is ephemeral, so data/db.json resets to the committed
 # 10,000-student database whenever the service restarts. The committed .vault_key

@@ -28,6 +28,7 @@ const path = require('path');
 const engine = require('../engine.js');
 const vault = require('./crypto-vault.js');
 const dataset = require('./dataset.js');
+const store = require('./store.js');
 
 const PORT = process.env.PORT || 4000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -37,55 +38,29 @@ const MAP = engine.DEFAULT_MAP;
 // ---------------------------------------------------------------- database
 const sessions = new Map();               // token -> { email, name }
 
-function load() {
-  try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
-  catch (e) { return seed(); }
-}
-function persistNow() {
-  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-  fs.writeFileSync(DB_FILE, JSON.stringify(db));
-}
-// Non-blocking, coalesced persistence. With a 10k-record db.json, rewriting the
-// whole file on every accept would block the event loop; instead we mark the
-// store dirty and flush at most once every 400ms, off the request path. For a
-// truly large deployment this JSON store is swapped for SQLite/Postgres, but the
-// server code above it does not change (same read/write calls).
-let dirty = false, flushQueued = false, flushing = false;
-function flush() {
-  if (flushing || !dirty) { flushQueued = false; return; }
-  dirty = false; flushing = true; flushQueued = false;
-  // write to a temp file then rename = atomic, never leaves a half-written db
-  const tmp = DB_FILE + '.tmp';
-  fs.promises.writeFile(tmp, JSON.stringify(db)).then(() => fs.promises.rename(tmp, DB_FILE))
-    .catch(() => {}).finally(() => { flushing = false; if (dirty) persist(); });
-}
-function persist() {
-  dirty = true;
-  if (flushQueued || flushing) return;
-  flushQueued = true;
-  setTimeout(flush, 800);   // coalesce bursts; at 5k concurrent this is ~1 write/sec
-}
-
-// ---- seed the store on first run, from data/sample-students.csv if present ----
-function seed() {
-  const faculty = [{
-    email: 'teacher@domain',
-    name: 'Dr. Demo Faculty',
-    passHash: vault.hashPasswordSync('teach123'),   // DEMO credential (sync: startup path)
-    capacity: 5,
-  }];
-  const csv = path.join(__dirname, 'data', 'sample-students.csv');
-  if (fs.existsSync(csv)) {
-    const base = dataset.loadFromCSV(csv, { groups: 8 });   // real import path (a)
-    return { students: base.students, groups: base.groups, faculty };
+// Seed data for a brand-new SQLite database: the committed db.json (10k students,
+// faculty, admin, groups), else a small CSV fallback.
+function initialData() {
+  try {
+    const j = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    if (!Array.isArray(j.queries)) j.queries = [];
+    return j;
+  } catch (e) {
+    const csv = path.join(__dirname, 'data', 'sample-students.csv');
+    const base = fs.existsSync(csv) ? dataset.loadFromCSV(csv, { groups: 8 }) : { students: {}, groups: [] };
+    return {
+      students: base.students, groups: base.groups, queries: [],
+      faculty: [{ email: 'teacher@domain', name: 'Dr. Demo Faculty', passHash: vault.hashPasswordSync('teach123'), capacity: 5, school: 'SCOPE' }],
+      admin: { username: 'admin', passHash: vault.hashPasswordSync('admin@123') },
+    };
   }
-  return { students: {}, groups: [], faculty };             // empty fallback
 }
 
-// initialise the store (seeds + writes db.json on first run)
-let db = load();
-if (!Array.isArray(db.queries)) db.queries = [];   // student -> admin support queries
-if (!fs.existsSync(DB_FILE)) persistNow();
+// Open SQLite (imports the seed on first run), then load the working set into
+// memory. Reads are served from memory (O(1)); every write goes THROUGH to
+// SQLite per change (durable, no whole-file rewrite).
+store.init(initialData);
+let db = store.loadAll();
 
 // Lock the vault to whichever key actually decrypts this database, so a wrong
 // or stale VAULT_KEY env var can never break email lookup / login.
@@ -306,7 +281,7 @@ const server = http.createServer(async (req, res) => {
     } else if (decision === 'reject') {
       g.status = 'rejected'; g.faculty = null;
     } else return sendJSON(res, 400, { error: 'decision must be accept or reject.' });
-    persist();
+    store.saveGroup(g);
     return sendJSON(res, 200, { ok: true, group: groupView(g, { reveal: true }), seatsUsed: seatsUsed(f.email), capacity: f.capacity });
   }
 
@@ -322,7 +297,7 @@ const server = http.createServer(async (req, res) => {
     const tok = vault.newToken();
     sessions.set(tok, { role: 'student', reg: st.reg, name: st.name });
     const wasReset = !!st.passwordResetNotice;
-    if (wasReset) { st.passwordResetNotice = false; persist(); }   // one-time notice
+    if (wasReset) { st.passwordResetNotice = false; store.saveStudent(st); }   // one-time notice
     return sendJSON(res, 200, { token: tok, reg: st.reg, name: st.name, school: st.school, changedPassword: !!st.changedPassword, passwordReset: wasReset });
   }
 
@@ -336,7 +311,7 @@ const server = http.createServer(async (req, res) => {
     st.passwordHash = await vault.hashPassword(newPassword);   // old password is unrecoverable
     st.changedPassword = true;
     const ce = studentArrByReg.get(sess.reg); if (ce) ce.changed = true;
-    persist();
+    store.saveStudent(st);
     return sendJSON(res, 200, { ok: true });
   }
 
@@ -408,7 +383,7 @@ const server = http.createServer(async (req, res) => {
       if (otherLoad >= f.capacity) return sendJSON(res, 409, { error: 'That faculty has no slots left. Please pick another.' });
       email = f.email; name = f.name;
     }
-    g.requestedFaculty = email; persist();
+    g.requestedFaculty = email; store.saveGroup(g);
     return sendJSON(res, 200, { ok: true, requestedFacultyName: name });
   }
 
@@ -483,7 +458,7 @@ const server = http.createServer(async (req, res) => {
     s.passwordHash = await vault.hashPassword(pw); s.changedPassword = false;
     s.passwordResetNotice = true;   // student is told on their next login
     const e = studentArrByReg.get(reg); if (e) e.changed = false;
-    persist();
+    store.saveStudent(s);
     return sendJSON(res, 200, { ok: true, initialPassword: pw });
   }
 
@@ -494,7 +469,7 @@ const server = http.createServer(async (req, res) => {
     const t = String(topic || '').trim(), m = String(message || '').trim();
     if (!t && !m) return sendJSON(res, 400, { error: 'Please describe the problem.' });
     const q = { id: 'Q' + String(db.queries.length + 1).padStart(4, '0'), reg: sess.reg, name: sess.name, topic: t, message: m, status: 'open', createdAt: Date.now() };
-    db.queries.push(q); persist();
+    db.queries.push(q); store.saveQuery(q);
     return sendJSON(res, 200, { ok: true, id: q.id });
   }
 
@@ -505,8 +480,8 @@ const server = http.createServer(async (req, res) => {
     const key = String(reg || '').trim().toUpperCase().replace(/\s+/g, '');
     const st = db.students[key];
     if (st && !db.queries.some((q) => q.reg === key && q.topic === 'Password reset request' && q.status === 'open')) {
-      db.queries.push({ id: 'Q' + String(db.queries.length + 1).padStart(4, '0'), reg: key, name: st.name, topic: 'Password reset request', message: 'Student used "Forgot password" and needs a reset.', status: 'open', createdAt: Date.now() });
-      persist();
+      const q = { id: 'Q' + String(db.queries.length + 1).padStart(4, '0'), reg: key, name: st.name, topic: 'Password reset request', message: 'Student used "Forgot password" and needs a reset.', status: 'open', createdAt: Date.now() };
+      db.queries.push(q); store.saveQuery(q);
     }
     return sendJSON(res, 200, { ok: true });
   }
@@ -523,7 +498,7 @@ const server = http.createServer(async (req, res) => {
     if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
     const { id } = await readBody(req);
     const q = db.queries.find((x) => x.id === id); if (!q) return sendJSON(res, 404, { error: 'Query not found.' });
-    q.status = q.status === 'open' ? 'resolved' : 'open'; persist();
+    q.status = q.status === 'open' ? 'resolved' : 'open'; store.saveQueryStatus(q.id, q.status);
     return sendJSON(res, 200, { ok: true, status: q.status });
   }
 
@@ -561,12 +536,12 @@ const server = http.createServer(async (req, res) => {
     const v = validateGroup(regs);
     if (!v.valid) return sendJSON(res, 422, { error: 'Group does not pass the constraints.', problems: v.problems });
 
-    if (mine) db.groups = db.groups.filter((x) => x !== mine);   // replace the old pending group
+    if (mine) { db.groups = db.groups.filter((x) => x !== mine); store.deleteGroup(mine.id); }   // replace the old pending group
     // leader (submitter, a SCOPE student) auto-accepts; every teammate must consent
     const consent = {};
     regs.forEach((r) => { consent[r] = r === sess.reg ? 'accepted' : 'pending'; });
     const g = { id: nextGroupId(), members: regs, status: 'pending', faculty: null, requestedFaculty: null, submittedBy: sess.reg, consent, createdAt: Date.now() };
-    db.groups.push(g); persist();
+    db.groups.push(g); store.saveGroup(g);
     return sendJSON(res, 200, { ok: true, group: groupView(g, {}) });
   }
 
@@ -580,7 +555,7 @@ const server = http.createServer(async (req, res) => {
     if (g.status === 'accepted') return sendJSON(res, 409, { error: 'This group has already been approved.' });
     if (!g.consent) g.consent = {};
     g.consent[sess.reg] = decision === 'accept' ? 'accepted' : 'declined';
-    persist();
+    store.saveGroup(g);
     return sendJSON(res, 200, { ok: true, consent: g.consent[sess.reg], ready: groupReady(g) });
   }
 

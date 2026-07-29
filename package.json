@@ -4,11 +4,11 @@
   "description": "Team + FFCS-style faculty allocation engine for VIT open projects",
   "main": "engine.js",
   "scripts": {
-    "start": "node server.js",
-    "portal": "node portal/portal-server.js",
+    "start": "node --experimental-sqlite portal/portal-server.js",
+    "portal": "node --experimental-sqlite portal/portal-server.js",
     "import": "node portal/dataset.js",
     "bench": "node -e \"const e=require('./engine');const r=e.synth(10000,0.42);const out=e.allocate(r,{faculty:Array.from({length:40},(_,i)=>({name:'P'+i,seats:60}))});console.log(out.stats);console.log(out.timingsMs);\""
   },
-  "engines": { "node": ">=16" },
+  "engines": { "node": ">=22.5" },
   "license": "MIT"
 }
