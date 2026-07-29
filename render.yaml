@@ -17,6 +17,8 @@ services:
         value: "22"
       - key: UV_THREADPOOL_SIZE
         value: "64"
+      - key: NODE_OPTIONS          # enables node:sqlite regardless of start command
+        value: "--experimental-sqlite"
 
 # Free plan: the disk is ephemeral, so data/db.json resets to the committed
 # 10,000-student database whenever the service restarts. The committed .vault_key

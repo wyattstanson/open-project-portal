@@ -8,6 +8,7 @@ COPY . .
 ENV PORT=4000
 ENV NODE_ENV=production
 ENV UV_THREADPOOL_SIZE=64
+ENV NODE_OPTIONS=--experimental-sqlite
 EXPOSE 4000
 # no npm install needed: the app uses only Node built-ins (http, crypto, sqlite)
 CMD ["node", "--experimental-sqlite", "portal/portal-server.js"]
