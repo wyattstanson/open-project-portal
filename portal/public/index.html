@@ -108,6 +108,17 @@
   .btn.hero{padding:9px 22px;font-size:15px;}
   .btn:disabled{opacity:.5;cursor:not-allowed;}
   .btn:focus-visible{outline:2px solid var(--brand);outline-offset:1px;}
+  /* processing / loading state: a spinner appears in the button while an action is in flight */
+  .btn.is-busy{pointer-events:none;opacity:.9;}
+  .btn.is-busy::before{content:"";display:inline-block;width:13px;height:13px;margin-right:8px;vertical-align:-2px;
+    border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .6s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  /* full-panel processing overlay for whole-list refreshes */
+  .busywrap{position:relative;}
+  .busywrap.is-loading{min-height:60px;}
+  .busywrap.is-loading::after{content:"";position:absolute;left:50%;top:24px;width:22px;height:22px;margin-left:-11px;
+    border-radius:50%;border:2.5px solid var(--brand);border-right-color:transparent;animation:spin .7s linear infinite;z-index:2;}
+  .busywrap.is-loading>*{opacity:.45;transition:opacity .15s;}
 
   /* ===== forms ===== */
   .field{margin-bottom:var(--s4);}
@@ -154,7 +165,8 @@
   .pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:var(--r);white-space:nowrap;line-height:1.6;}
   .pill.pending{background:var(--warn-wash);color:var(--warn);} .pill.accepted{background:var(--good-wash);color:var(--good);}
   .pill.rejected{background:var(--bad-wash);color:var(--bad);} .pill.pass{background:var(--good-wash);color:var(--good);}
-  .pill.fail{background:var(--bad-wash);color:var(--bad);} .pill.scope{background:var(--brand-wash);color:var(--brand);}
+  .pill.fail{background:var(--bad-wash);color:var(--bad);}
+  .pill.scope{background:var(--brand-wash);color:var(--brand);border:1px solid color-mix(in srgb,var(--brand) 35%,transparent);}
   .pill.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;}
   .chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:var(--r);}
   .note{border-radius:var(--r);padding:10px 12px;font-size:13px;margin-top:var(--s3);border:1px solid transparent;}
@@ -216,6 +228,16 @@
   .stag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ink-3);}
   .stag.open{background:var(--good-wash);color:var(--good);border-color:transparent;} .stag.open::before{background:var(--good);}
   .stag.used{background:var(--surface-2);color:var(--ink-3);text-decoration:line-through;opacity:.7;}
+
+  /* ===== constraint checklist: every rule, failing ones highlighted ===== */
+  .checks{display:grid;gap:5px;margin-top:6px;}
+  .checkitem{display:flex;align-items:center;gap:9px;font-size:13px;padding:6px 10px;border-radius:var(--r);border:1px solid var(--line);background:var(--surface-2);}
+  .checkitem .ic{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:12px;font-weight:700;line-height:1;}
+  .checkitem.ok{color:var(--ink-2);} .checkitem.ok .ic{background:var(--good-wash);color:var(--good);}
+  .checkitem.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,var(--line));background:var(--bad-wash);font-weight:600;}
+  .checkitem.bad .ic{background:var(--bad);color:#fff;}
+  .checkitem .dt{margin-left:auto;font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink-3);}
+  .checkitem.bad .dt{color:var(--bad);}
 
   /* ===== landing ===== */
   .land{max-width:1080px;margin:0 auto;padding:var(--s7) var(--s5) var(--s6);}
@@ -310,7 +332,7 @@
         </div>
       </div>
       <p class="muted" style="font-size:12.5px;margin-top:24px;">
-        Demo access &mdash; student <b class="mono">24BCE2312</b> / <b class="mono">aryanshsinha</b> &nbsp;&middot;&nbsp; faculty <b class="mono">teacher@domain</b> / <b class="mono">teach123</b> &nbsp;&middot;&nbsp; admin <b class="mono">admin</b> / <b class="mono">admin@123</b>. A student project tool, not an official institute site.
+        Demo access &mdash; student <b class="mono">24BCE2312</b>, first-time hashkey <b class="mono" id="demoHashkey">…</b> (you then set a password) &nbsp;&middot;&nbsp; faculty <b class="mono">teacher@domain</b> / <b class="mono">teach123</b> &nbsp;&middot;&nbsp; admin <b class="mono">admin</b> / <b class="mono">admin@123</b>. Synthetic data; not an official institute site.
       </p>
     </div></section>
 
@@ -322,11 +344,26 @@
           <div class="hd"><h3>Student sign in</h3></div>
           <div class="bd">
             <div class="field"><label>Registration number</label><input class="input mono" id="stReg" placeholder="24BCE2312" autocomplete="username" style="text-transform:uppercase"></div>
-            <div class="field"><label>Password</label><input class="input" id="stPass" type="password" placeholder="Your password" autocomplete="current-password"></div>
+            <div class="field"><label>Password <span class="mini" style="font-weight:400">— or first-time hashkey</span></label><input class="input" id="stPass" type="password" placeholder="Password, or hashkey from your proctor" autocomplete="current-password"></div>
             <button class="btn pri" id="stLoginBtn" style="width:100%">Sign in</button>
             <div id="stLoginMsg"></div>
             <div style="text-align:center;margin-top:12px"><a href="#student" id="stForgot" style="font-size:12.5px">Forgot password?</a></div>
-            <p class="muted" style="font-size:12px;margin:14px 0 0">Sign in with your registration number. Initial password is your full name in lowercase with no spaces. Your email is private and only staff can see it.</p>
+            <p class="muted" style="font-size:12px;margin:14px 0 0"><b>First time?</b> Use the one-time <b>hashkey</b> from your proctor as your password — you'll then set your own. <b>Returning?</b> Use the password you created. Your email is private and only staff can see it.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="stRegister" class="authwrap hidden">
+        <div class="card authcard">
+          <div class="hd"><h3>Set your password</h3></div>
+          <div class="bd">
+            <p class="mini" style="margin:0 0 12px">Welcome, <b id="regName"></b>. This is a one-time setup — create the password you'll sign in with from now on.</p>
+            <div class="field"><label>New password</label><input class="input" id="regPass" type="password" autocomplete="new-password" placeholder="Create a password"></div>
+            <div class="field"><label>Confirm password</label><input class="input" id="regPass2" type="password" autocomplete="new-password" placeholder="Type it again"></div>
+            <label class="mini" style="display:block;margin-bottom:6px;color:var(--ink-2)">Your password must have</label>
+            <div id="regChecks"></div>
+            <button class="btn pri" id="regBtn" style="width:100%;margin-top:12px">Create password &amp; continue</button>
+            <div id="regMsg"></div>
           </div>
         </div>
       </div>
@@ -347,23 +384,23 @@
           <div class="bd" id="stGroups"></div></div>
 
         <div class="grid-2">
-          <div class="card"><div class="hd"><h3>Build your group</h3><span class="mini" id="stComposeState" style="margin-left:auto"></span></div>
+          <div class="card" id="stBuildCard"><div class="hd"><h3>Team composition</h3><span class="mini" id="stComposeState" style="margin-left:auto"></span></div>
             <div class="bd">
-              <div class="field" style="margin-bottom:10px"><label>Five registration numbers, one per line (must include yours)</label>
-                <textarea class="input mono" id="stMembers" placeholder="24BCE2312"></textarea></div>
-              <label class="mini" style="display:block;margin-bottom:6px;color:var(--ink-2)">Team composition</label>
+              <p class="mini" id="stBuildHint" style="margin:0 0 12px">Invite students from <b>Find teammates</b>. Each person you invite must accept before the team is complete. A valid team is <b>2 SCOPE + 3 students from three different schools</b>.</p>
               <div class="jug" id="stJug"></div>
               <div style="margin-top:12px"><label class="mini" style="display:block;margin-bottom:6px;color:var(--ink-2)">Schools you may still add (3 must be different, none SCOPE)</label>
                 <div class="schooltags" id="stSchoolTags"></div></div>
-              <div class="row" style="margin-top:14px"><button class="btn pri" id="stSubmit">Submit group</button><button class="btn sm" id="stFill">Fill a valid example</button></div>
+              <div id="stComposeProblems"></div>
+              <div class="row" style="margin-top:14px"><button class="btn pri" id="stGoInvite">Find teammates to invite</button></div>
               <div id="stMsg"></div>
             </div></div>
 
           <div class="card"><div class="hd"><h3>Account &amp; password</h3></div>
             <div class="bd">
               <div class="field"><label>Current password</label><input class="input" id="pwCur" type="password" autocomplete="current-password"></div>
-              <div class="field"><label>New password (min 6 characters)</label><input class="input" id="pwNew" type="password" autocomplete="new-password"></div>
-              <button class="btn" id="pwBtn">Update password</button>
+              <div class="field" style="margin-bottom:8px"><label>New password</label><input class="input" id="pwNew" type="password" autocomplete="new-password"></div>
+              <div id="pwChecks"></div>
+              <button class="btn" id="pwBtn" style="margin-top:10px">Update password</button>
               <div id="pwMsg"></div>
             </div></div>
         </div>
@@ -407,6 +444,8 @@
               <textarea class="input" id="qMsg" placeholder="Describe what happened..." style="min-height:84px"></textarea></div>
             <button class="btn pri" id="qSend">Send to admin</button>
             <div id="qOut"></div>
+            <div class="divider"></div>
+            <p class="mini" style="margin:0">Prefer email? Write to <a id="qMail" href="#">the open-project helpdesk</a> — your registration number is added to the subject automatically.</p>
           </div></div>
         </div>
         </div></div>
@@ -443,6 +482,7 @@
               <span class="lbl">Groups accepted <b id="capUsed">0</b> / <b id="capMax">3</b></span>
               <div class="meter"><span id="capBar" style="width:0%"></span></div>
             </div>
+            <div class="cap"><span class="lbl">Teams I'll take</span><input class="input num" id="facCapInput" type="number" min="0" max="50" style="width:60px;padding:5px 8px"><button class="btn sm pri" id="facCapBtn">Set</button></div>
             <span class="pill dot" id="facSummary" style="background:var(--surface);border:1px solid var(--line);color:var(--ink-2)"></span>
             <label class="row" style="font-size:13px;color:var(--ink-2);gap:7px;cursor:pointer;margin-left:auto">
               <input type="checkbox" id="onlyPass" style="width:16px;height:16px;accent-color:var(--brand)"> Only groups that qualify
@@ -487,14 +527,16 @@
         </aside>
         <div class="dashmain">
         <div class="pagehead spread"><div><div class="eyebrow">Administration</div><h1>All accounts</h1></div>
-          <button class="btn pri" id="admExport" style="display:inline-flex;align-items:center;gap:7px"><svg class="i" style="width:16px;height:16px" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>Download allocations CSV</button></div>
+          <div class="row">
+          <button class="btn danger" id="admResetAll" style="display:inline-flex;align-items:center;gap:7px"><svg class="i" style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>Reset all allocations</button>
+          <button class="btn pri" id="admExport" style="display:inline-flex;align-items:center;gap:7px"><svg class="i" style="width:16px;height:16px" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>Download allocations CSV</button></div></div>
 
         <div id="atab-students">
           <div class="searchrow">
             <input class="input" id="admStuSearch" placeholder="Search by reg no., name, or email">
             <span class="mini" id="admStuCount"></span>
           </div>
-          <div class="scrollx"><table class="dtable"><thead><tr><th>Reg no.</th><th>Name</th><th>School</th><th>Email</th><th>Initial password</th><th></th></tr></thead><tbody id="admStuRows"></tbody></table></div>
+          <div class="scrollx"><table class="dtable"><thead><tr><th>Reg no.</th><th>Name</th><th>School</th><th>Email</th><th>Hashkey / status</th><th></th></tr></thead><tbody id="admStuRows"></tbody></table></div>
           <div class="pager"><span class="count" id="admStuPage"></span><button class="btn sm" id="admStuPrev">Prev</button><button class="btn sm" id="admStuNext">Next</button></div>
         </div>
 
@@ -515,8 +557,19 @@
 
 <script>
 var facTok=null, stTok=null, stReg=null, admTok=null, facDirData=[];
+var stScope=false, myGroup=null;   // is the signed-in student SCOPE (can lead), and their current team
+var SUPPORT_EMAIL='openproject.helpdesk@vitstudent.ac.in';   // configure to your real helpdesk address
+function setSupportMail(){var a=document.getElementById('qMail');if(!a)return;
+  var subj='Open Project query'+(stReg?(' — '+stReg):'');
+  a.href='mailto:'+SUPPORT_EMAIL+'?subject='+encodeURIComponent(subj);}
 var toastTimer;
 function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},2400);}
+/* processing state: disable a button and show a spinner until its action settles */
+function busy(btn,on){if(!btn)return;if(on){btn.disabled=true;btn.classList.add('is-busy');}else{btn.disabled=false;btn.classList.remove('is-busy');}}
+/* run(btn, promise): show the spinner on btn while promise is in flight, then restore it */
+function run(btn,promise){busy(btn,true);return promise.then(function(v){busy(btn,false);return v;},function(e){busy(btn,false);throw e;});}
+/* loading state for a whole container (list/table refreshes) */
+function loading(el,on){if(el)el.classList.toggle('is-loading',!!on);}
 function initials(name){return String(name||'?').split(' ').map(function(w){return w[0]||''}).join('').slice(0,2).toUpperCase();}
 function setUser(name){
   var c=document.getElementById('userchip'),so=document.getElementById('signout');
@@ -536,12 +589,14 @@ window.addEventListener('popstate',function(){applyView((location.hash||'#landin
 document.querySelectorAll('[data-go]').forEach(function(b){b.onclick=function(){show(b.getAttribute('data-go'));};});
 
 /* persistent session so a refresh does not log you out */
+/* login is kept in sessionStorage (a per-session store), so it ends when the browser
+   session closes instead of persisting like a long-lived cookie. */
 var SKEY='opp_sess';
-function saveSession(o){try{localStorage.setItem(SKEY,JSON.stringify(o));}catch(e){}}
-function clearSession(){try{localStorage.removeItem(SKEY);}catch(e){}}
-function getSession(){try{return JSON.parse(localStorage.getItem(SKEY));}catch(e){return null;}}
-function doLogout(silent){facTok=null;stTok=null;stReg=null;admTok=null;clearSession();setUser(null);
-  document.getElementById('stApp').classList.add('hidden');document.getElementById('stLogin').classList.remove('hidden');
+function saveSession(o){try{sessionStorage.setItem(SKEY,JSON.stringify(o));}catch(e){}}
+function clearSession(){try{sessionStorage.removeItem(SKEY);}catch(e){}}
+function getSession(){try{return JSON.parse(sessionStorage.getItem(SKEY));}catch(e){return null;}}
+function doLogout(silent){stopAdmPoll();facTok=null;stTok=null;stReg=null;admTok=null;clearSession();setUser(null);
+  document.getElementById('stApp').classList.add('hidden');document.getElementById('stRegister').classList.add('hidden');document.getElementById('stLogin').classList.remove('hidden');
   document.getElementById('facDash').classList.add('hidden');document.getElementById('facLogin').classList.remove('hidden');
   document.getElementById('admDash').classList.add('hidden');document.getElementById('admLogin').classList.remove('hidden');
   if(!silent)show('landing');else applyView('landing');}
@@ -562,15 +617,26 @@ function onEnter(ids,btnId){ids.forEach(function(id){var el=document.getElementB
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function note(el,kind,html){el.className='note '+kind;el.innerHTML=html;}
 function problemList(ps){return ps&&ps.length?'<ul><li>'+ps.map(esc).join('</li><li>')+'</li></ul>':'';}
+/* render EVERY team constraint as a checklist, highlighting the ones not yet met */
+function constraintsHtml(checks){
+  if(!checks||!checks.length)return '';
+  return '<div class="checks">'+checks.map(function(c){
+    var dt=c.detail?'<span class="dt">'+esc(c.detail)+'</span>':'';
+    return '<div class="checkitem '+(c.ok?'ok':'bad')+'"><span class="ic">'+(c.ok?'✓':'!')+'</span><span>'+esc(c.label)+'</span>'+dt+'</div>';
+  }).join('')+'</div>';
+}
 
 var CROWN='<svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-1px;fill:var(--warn)" title="Team leader"><path d="M3 8l3.6 3.1L12 5l5.4 6.1L21 8l-1.4 9.5a1 1 0 01-1 .5H5.4a1 1 0 01-1-.5L3 8z"/></svg>';
-function memberRow(m){
+function memberRow(m,g){
   var crown=m.isLeader?CROWN+' ':'';
   var cons=m.consent==='pending'?' <span class="pill pending" style="font-size:10px;padding:1px 7px">awaiting</span>':
            m.consent==='declined'?' <span class="pill rejected" style="font-size:10px;padding:1px 7px">declined</span>':'';
+  // the team leader can remove any non-leader member while the team is still pending
+  var canRemove=g&&g.leader===stReg&&!m.isLeader&&g.status!=='accepted';
+  var rm=canRemove?'<button class="btn sm ghost" data-remove="'+esc(m.reg)+'" title="Remove from team" style="padding:2px 9px;margin-left:8px">Remove</button>':'';
   return '<div class="m '+(m.scope?'scope':'')+'"><span class="reg">'+esc(m.reg)+'</span>'+
     '<span class="nm">'+crown+esc(m.name)+(m.scope?' &middot; SCOPE':'')+cons+'</span>'+
-    '<span class="em">'+esc(m.email||'')+'</span></div>';
+    '<span class="em">'+esc(m.email||'')+rm+'</span></div>';
 }
 function statusPill(s){return '<span class="pill '+s+' dot">'+s+'</span>';}
 function qualPill(v){return v?'<span class="pill pass">qualifies</span>':'<span class="pill fail">does not qualify</span>';}
@@ -578,20 +644,52 @@ function qualPill(v){return v?'<span class="pill pass">qualifies</span>':'<span 
 /* ---------------- student ---------------- */
 document.getElementById('stLoginBtn').onclick=function(){
   var reg=document.getElementById('stReg').value.trim().toUpperCase(), password=document.getElementById('stPass').value;
-  api('/api/student/login',{method:'POST',body:{reg:reg,password:password}}).then(function(r){
+  run(this,api('/api/student/login',{method:'POST',body:{reg:reg,password:password}}).then(function(r){
     if(r.ok){
-      stTok=r.body.token;stReg=r.body.reg;
-      saveSession({role:'student',token:stTok,reg:stReg,name:r.body.name});
+      stTok=r.body.token;stReg=r.body.reg;stScope=!!r.body.scope;setUser(r.body.name);
+      if(r.body.mustRegister){startRegistration(r.body.name,r.body.passwordReset);return;}   // one-time password setup
+      saveSession({role:'student',token:stTok,reg:stReg,name:r.body.name,scope:stScope});
       document.getElementById('stLogin').classList.add('hidden');document.getElementById('stApp').classList.remove('hidden');
-      setUser(r.body.name);
-      document.getElementById('stMembers').value=r.body.reg+'\n';
       var fn=document.getElementById('stFirstLoginNote');
-      if(r.body.passwordReset){note(fn,'bad','Your password was reset by the admin to your default (full name, lowercase, no spaces). Please set a new one below under <b>Account &amp; password</b>.');toast('Your password was reset by admin');}
-      else if(!r.body.changedPassword)note(fn,'info','You are signing in with your initial password. Set your own below under <b>Account &amp; password</b>.');
+      if(r.body.passwordReset){note(fn,'bad','Your password was reset by the admin. Please set a new one below under <b>Account &amp; password</b>.');toast('Your password was reset by admin');}
       else fn.innerHTML='';
-      loadMyGroups();loadStudentFacDir();loadStudentDir();composeGuide();
+      loadMyGroups();loadStudentFacDir();loadStudentDir();
     }else note(document.getElementById('stLoginMsg'),'bad',esc(r.body.error));
-  });
+  }));
+};
+/* first-time registration: password rules (mirrors the server) + live checklist */
+function pwRules(pw){pw=String(pw||'');return [
+  {label:'At least 8 characters',ok:pw.length>=8},
+  {label:'A lowercase letter',ok:/[a-z]/.test(pw)},
+  {label:'An uppercase letter',ok:/[A-Z]/.test(pw)},
+  {label:'A number',ok:/[0-9]/.test(pw)},
+  {label:'An underscore ( _ )',ok:/_/.test(pw)}
+];}
+function pwChecksHtml(pw){return constraintsHtml(pwRules(pw));}
+function updateRegChecks(){var el=document.getElementById('regChecks');if(el)el.innerHTML=pwChecksHtml(document.getElementById('regPass').value);}
+function startRegistration(name,wasReset){
+  document.getElementById('stLogin').classList.add('hidden');
+  document.getElementById('stApp').classList.add('hidden');
+  document.getElementById('stRegister').classList.remove('hidden');
+  document.getElementById('regName').textContent=name||'';
+  document.getElementById('regPass').value='';document.getElementById('regPass2').value='';
+  var m=document.getElementById('regMsg');m.className='';m.innerHTML=wasReset?'<div class="note info">Your registration was reset by the admin — set a new password to continue.</div>':'';
+  updateRegChecks();
+}
+document.getElementById('regPass').addEventListener('input',updateRegChecks);
+document.getElementById('regBtn').onclick=function(){
+  var pw=document.getElementById('regPass').value,pw2=document.getElementById('regPass2').value;
+  if(pwRules(pw).some(function(r){return !r.ok;})){note(document.getElementById('regMsg'),'bad','Your password does not meet all the requirements yet.');return;}
+  if(pw!==pw2){note(document.getElementById('regMsg'),'bad','The two passwords do not match.');return;}
+  run(this,api('/api/student/set-password',{method:'POST',token:stTok,body:{newPassword:pw}}).then(function(r){
+    if(r.ok){
+      toast('Password set — welcome!');
+      saveSession({role:'student',token:stTok,reg:stReg,name:document.getElementById('regName').textContent,scope:stScope});
+      document.getElementById('stRegister').classList.add('hidden');document.getElementById('stApp').classList.remove('hidden');
+      document.getElementById('stFirstLoginNote').innerHTML='';
+      loadMyGroups();loadStudentFacDir();loadStudentDir();
+    }else note(document.getElementById('regMsg'),'bad',esc(r.body.error)+problemList(r.body.problems));
+  }));
 };
 document.getElementById('stForgot').onclick=function(e){e.preventDefault();
   var reg=(document.getElementById('stReg').value||'').trim().toUpperCase();
@@ -601,38 +699,36 @@ document.getElementById('stForgot').onclick=function(e){e.preventDefault();
     toast('Reset request sent to admin');
   });
 };
-function loadMyGroups(){api('/api/student/mygroups',{token:stTok}).then(function(r){
+function emptyGroupHtml(){
+  return stScope
+    ? '<p class="muted">You have not started a team yet. Go to <b>Find teammates</b> and invite your first member — that creates your team.</p>'
+    : '<p class="muted">You are not in a team yet. A SCOPE team leader can invite you; the invitation will appear here for you to accept or decline.</p>';
+}
+function loadMyGroups(){return api('/api/student/mygroups',{token:stTok}).then(function(r){
   if(!r.ok)return;
+  if(typeof r.body.scope!=='undefined')stScope=!!r.body.scope;
+  myGroup=(r.body.groups&&r.body.groups.length)?r.body.groups[0]:null;
   document.getElementById('stGroupCount').textContent=r.body.groups.length?(r.body.groups.length+' group'+(r.body.groups.length>1?'s':'')):'';
   document.getElementById('stGroups').innerHTML=r.body.groups.map(function(g){
     var ready=g.status==='accepted'?'':(g.ready?'<span class="pill accepted">all accepted</span>':'<span class="pill pending">awaiting members</span>');
-    return '<div style="margin-bottom:14px"><div class="spread" style="margin-bottom:10px"><span class="mono" style="font-weight:700;color:var(--ink-2)">'+esc(g.id)+'</span><span class="row">'+qualPill(g.valid)+statusPill(g.status)+ready+'</span></div><div class="members">'+g.members.map(memberRow).join('')+'</div>'+(g.valid?'':'<div class="note bad">'+problemList(g.problems)+'</div>')+consentPromptHtml(g)+facultyPickerHtml(g)+'</div>';
-  }).join('')||'<p class="muted">You are not in a group yet. Submit one below.</p>';
+    return '<div style="margin-bottom:14px"><div class="spread" style="margin-bottom:10px"><span class="mono" style="font-weight:700;color:var(--ink-2)">'+esc(g.id)+'</span><span class="row">'+qualPill(g.valid)+statusPill(g.status)+ready+'</span></div><div class="members">'+g.members.map(function(m){return memberRow(m,g);}).join('')+'</div>'+(g.valid?'':'<div style="margin-top:10px">'+constraintsHtml(g.checks)+'</div>')+consentPromptHtml(g)+facultyPickerHtml(g)+'</div>';
+  }).join('')||emptyGroupHtml();
+  // the composition card is only relevant to a SCOPE student building/leading a team
+  var bc=document.getElementById('stBuildCard');
+  if(bc){var showBuild=stScope&&(!myGroup||myGroup.leader===stReg);bc.classList.toggle('hidden',!showBuild);}
+  updateCompose();
 });}
-document.getElementById('stFill').onclick=function(){
-  api('/api/roster').then(function(r){
-    var s=r.body.students, other=s.filter(function(x){return !x.scope;}), sc=s.filter(function(x){return x.scope&&x.reg!==stReg;});
-    var by={};other.forEach(function(x){(by[x.school]||(by[x.school]=[])).push(x);});
-    var sch=Object.keys(by).slice(0,3);
-    if(!sc.length||sch.length<3)return;
-    document.getElementById('stMembers').value=[stReg,sc[0].reg,by[sch[0]][0].reg,by[sch[1]][0].reg,by[sch[2]][0].reg].join('\n');
-    composeGuide();
-  });
-};
-document.getElementById('stSubmit').onclick=function(){
-  var members=document.getElementById('stMembers').value.split(/\n+/).map(function(s){return s.trim();}).filter(Boolean);
-  api('/api/student/submit',{method:'POST',token:stTok,body:{members:members}}).then(function(r){
-    if(r.ok)note(document.getElementById('stMsg'),'ok','Group '+esc(r.body.group.id)+' submitted and pending faculty review.'),loadMyGroups();
-    else note(document.getElementById('stMsg'),'bad',esc(r.body.error)+problemList(r.body.problems));
-  });
+document.getElementById('stGoInvite').onclick=function(){
+  var tab=document.querySelector('#view-student [data-stab="directory"]');if(tab)tab.click();
 };
 document.getElementById('pwBtn').onclick=function(){
   var cur=document.getElementById('pwCur').value,nw=document.getElementById('pwNew').value;
-  api('/api/student/password',{method:'POST',token:stTok,body:{currentPassword:cur,newPassword:nw}}).then(function(r){
-    if(r.ok){note(document.getElementById('pwMsg'),'ok','Password updated.');document.getElementById('pwCur').value='';document.getElementById('pwNew').value='';document.getElementById('stFirstLoginNote').innerHTML='';}
-    else note(document.getElementById('pwMsg'),'bad',esc(r.body.error));
-  });
+  run(this,api('/api/student/password',{method:'POST',token:stTok,body:{currentPassword:cur,newPassword:nw}}).then(function(r){
+    if(r.ok){note(document.getElementById('pwMsg'),'ok','Password updated.');document.getElementById('pwCur').value='';document.getElementById('pwNew').value='';document.getElementById('pwChecks').innerHTML='';document.getElementById('stFirstLoginNote').innerHTML='';}
+    else note(document.getElementById('pwMsg'),'bad',esc(r.body.error)+problemList(r.body.problems));
+  }));
 };
+document.getElementById('pwNew').addEventListener('input',function(){document.getElementById('pwChecks').innerHTML=this.value?pwChecksHtml(this.value):'';});
 
 function loadStudentFacDir(){return api('/api/faculty-directory',{token:stTok}).then(function(r){
   if(!r.ok)return;
@@ -675,30 +771,40 @@ function facultyPickerHtml(g){
     return '<div class="pickrow"><span class="lab2">Faculty</span><span class="mini">'+t+'</span></div>';
   }
   if(!g.ready)return '<div class="pickrow"><span class="lab2">Faculty</span><span class="mini">All members must accept before the group can go to a faculty.</span></div>';
-  var status=g.requestedFacultyName?'<span class="mini">Selected <b>'+esc(g.requestedFacultyName)+'</b> · awaiting approval</span>':'<span class="mini">Pick a faculty, then press Confirm</span>';
-  return '<div class="pickrow"><span class="lab2">Select faculty</span><select class="sel fpick">'+facultyOptions(g.requestedFacultyId)+'</select><button class="btn sm pri" data-confirmfac="1">Confirm</button></div><div style="margin-top:7px">'+status+'</div>';
+  var status=g.requestedFacultyName?'<span class="mini">Request sent to <b>'+esc(g.requestedFacultyName)+'</b> · awaiting approval</span>':'<span class="mini">Pick a faculty, then press Choose faculty</span>';
+  return '<div class="pickrow"><span class="lab2">Select faculty</span><select class="sel fpick">'+facultyOptions(g.requestedFacultyId)+'</select><button class="btn sm pri" data-confirmfac="1">Choose faculty</button></div><div style="margin-top:7px">'+status+'</div>';
 }
 document.getElementById('stGroups').addEventListener('click',function(e){
   var b=e.target.closest('[data-confirmfac]');if(!b)return;
   var s=b.parentNode.querySelector('select.fpick');if(!s)return;
-  b.disabled=true;
-  api('/api/student/select-faculty',{method:'POST',token:stTok,body:{facultyId:s.value}}).then(function(r){
-    if(r.ok){toast(r.body.requestedFacultyName?('Faculty confirmed: '+r.body.requestedFacultyName):'Faculty cleared');loadStudentFacDir();}
-    else{b.disabled=false;toast(r.body.error);}
-  });
+  run(b,api('/api/student/select-faculty',{method:'POST',token:stTok,body:{facultyId:s.value}}).then(function(r){
+    if(r.ok){toast(r.body.requestedFacultyName?('Request sent to '+r.body.requestedFacultyName):'Faculty selection cleared');loadStudentFacDir();}
+    else{toast(r.body.error);}
+  }));
 });
 document.getElementById('stGroups').addEventListener('click',function(e){
   var b=e.target.closest('[data-consent]');if(!b)return;
-  api('/api/student/consent',{method:'POST',token:stTok,body:{decision:b.getAttribute('data-consent')}}).then(function(r){
-    if(r.ok){toast(b.getAttribute('data-consent')==='accept'?'You accepted the group':'You declined the group');loadStudentFacDir();}
+  var dec=b.getAttribute('data-consent');
+  run(b,api('/api/student/consent',{method:'POST',token:stTok,body:{decision:dec}}).then(function(r){
+    if(r.ok){toast(dec==='accept'?'You accepted the team':'You left the team');loadMyGroups();loadStudentFacDir();}
     else toast(r.body.error);
-  });
+  }));
+});
+/* leader removes a member / withdraws an invite */
+document.getElementById('stGroups').addEventListener('click',function(e){
+  var b=e.target.closest('[data-remove]');if(!b)return;
+  var reg=b.getAttribute('data-remove');
+  run(b,api('/api/student/uninvite',{method:'POST',token:stTok,body:{reg:reg}}).then(function(r){
+    if(r.ok){toast('Removed '+reg+' from your team');loadMyGroups();loadStudentDir();loadStudentFacDir();}
+    else toast(r.body.error);
+  }));
 });
 
 // jug-filling composition guide
 function slotHtml(k,have,need){return '<div class="slot'+(have>=need?' filled':'')+'"><div class="k">'+esc(k)+'</div><div class="v">'+have+' / '+need+'</div></div>';}
-function composeGuide(){
-  var members=document.getElementById('stMembers').value.split(/\n+/).map(function(s){return s.trim();}).filter(Boolean);
+function updateCompose(){
+  if(!stTok)return;
+  var members=(myGroup&&myGroup.members)?myGroup.members.map(function(m){return m.reg;}):[];
   api('/api/student/compose',{method:'POST',token:stTok,body:{members:members}}).then(function(r){
     if(!r.ok)return;var b=r.body;
     document.getElementById('stJug').innerHTML=slotHtml('SCOPE',b.scopeCount,b.scopeNeeded)+slotHtml('Other schools',b.otherFilled,b.otherNeeded)+slotHtml('Total',b.count,5);
@@ -707,12 +813,13 @@ function composeGuide(){
       return '<span class="stag '+cls+'" title="'+esc(s.school)+'">'+esc(s.school.split(':')[0])+(s.used?' · in team':'')+'</span>';
     }).join('');
     var st=document.getElementById('stComposeState');
-    if(b.valid){st.textContent='ready to submit';st.style.color='var(--good)';}
+    if(b.valid){st.textContent='ready — pick a faculty';st.style.color='var(--good)';}
     else{st.textContent=b.count+' / 5 members';st.style.color='var(--ink-3)';}
+    // show ALL constraints as a checklist, with the unmet ones highlighted in red
+    var pc=document.getElementById('stComposeProblems');
+    if(pc){pc.className='';pc.innerHTML='<label class="mini" style="display:block;margin:12px 0 6px;color:var(--ink-2)">Team constraints — all must be met</label>'+constraintsHtml(b.checks);}
   });
 }
-var stComposeTimer;
-document.getElementById('stMembers').addEventListener('input',function(){clearTimeout(stComposeTimer);stComposeTimer=setTimeout(composeGuide,250);});
 
 // student directory (names + reg, NO emails), searchable + paginated
 var stDirState={q:'',branch:'',page:1,pages:1},stDirSeq=0,stBranchesLoaded=false;
@@ -725,7 +832,11 @@ function loadStudentDir(){
     document.getElementById('stDirCount').textContent=r.body.total.toLocaleString()+' students';
     document.getElementById('stDirPage').textContent='Page '+r.body.page+' of '+r.body.pages;
     document.getElementById('stDirRows').innerHTML=r.body.rows.map(function(s){
-      var action=s.grouped?'<span class="mini">in a group</span>':'<button class="btn sm" data-add="'+esc(s.reg)+'">Add</button>';
+      var action;
+      if(s.grouped)action='<span class="mini">in a team</span>';
+      else if(s.reg===stReg)action='<span class="mini">you</span>';
+      else if(stScope)action='<button class="btn sm pri" data-invite="'+esc(s.reg)+'">Invite</button>';
+      else action='<span class="mini">—</span>';
       return '<tr'+(s.grouped?' style="opacity:.6"':'')+'><td class="mono">'+esc(s.reg)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.school.split(':')[0])+'</td><td>'+(s.scope?'<span class="pill scope">SCOPE</span>':'Other')+'</td><td>'+action+'</td></tr>';
     }).join('')||'<tr><td colspan="5" class="mini">No matches.</td></tr>';
   });
@@ -736,23 +847,22 @@ document.getElementById('stDirBranch').onchange=function(e){stDirState.branch=e.
 document.getElementById('stDirPrev').onclick=function(){if(stDirState.page>1){stDirState.page--;loadStudentDir();}};
 document.getElementById('stDirNext').onclick=function(){if(stDirState.page<stDirState.pages){stDirState.page++;loadStudentDir();}};
 document.getElementById('stDirRows').addEventListener('click',function(e){
-  var b=e.target.closest('[data-add]');if(!b)return;
-  var reg=b.getAttribute('data-add');
-  var ta=document.getElementById('stMembers');
-  var lines=ta.value.split(/\n+/).map(function(s){return s.trim().toUpperCase();}).filter(Boolean);
-  if(lines.indexOf(reg)>=0)return;
-  if(lines.length>=5){note(document.getElementById('stMsg'),'bad','Your group already has 5 members. Remove one first.');return;}
-  lines.push(reg);ta.value=lines.join('\n');composeGuide();
+  var b=e.target.closest('[data-invite]');if(!b)return;
+  var reg=b.getAttribute('data-invite');
+  run(b,api('/api/student/invite',{method:'POST',token:stTok,body:{reg:reg}}).then(function(r){
+    if(r.ok){toast('Invited '+reg+' — awaiting their acceptance');loadMyGroups();loadStudentDir();loadStudentFacDir();}
+    else toast(r.body.error);
+  }));
 });
 
 // contact admin / raise a query
 document.getElementById('qSend').onclick=function(){
   var topic=document.getElementById('qTopic').value, message=document.getElementById('qMsg').value.trim();
-  api('/api/student/query',{method:'POST',token:stTok,body:{topic:topic,message:message}}).then(function(r){
+  run(this,api('/api/student/query',{method:'POST',token:stTok,body:{topic:topic,message:message}}).then(function(r){
     var o=document.getElementById('qOut');
     if(r.ok){note(o,'ok','Sent to admin as query '+esc(r.body.id)+'. They will look into it.');document.getElementById('qMsg').value='';toast('Query sent to admin');}
     else note(o,'bad',esc(r.body.error));
-  });
+  }));
 };
 
 /* student left-nav: switch panels */
@@ -762,6 +872,7 @@ document.querySelectorAll('#view-student [data-stab]').forEach(function(t){t.onc
   ['overview','directory','faculty','help'].forEach(function(p){var el=document.getElementById('stab-'+p);if(el)el.classList.toggle('hidden',p!==v);});
   if(v==='directory')loadStudentDir();
   if(v==='faculty')loadStudentFacDir();
+  if(v==='help')setSupportMail();
   window.scrollTo(0,0);
 };});
 
@@ -793,19 +904,27 @@ document.getElementById('facStuNext').onclick=function(){if(facStuState.page<fac
 
 document.getElementById('facSignin').onclick=function(){
   var email=document.getElementById('facEmail').value.trim(),password=document.getElementById('facPass').value;
-  api('/api/faculty/login',{method:'POST',body:{email:email,password:password}}).then(function(r){
+  run(this,api('/api/faculty/login',{method:'POST',body:{email:email,password:password}}).then(function(r){
     if(r.ok){facTok=r.body.token;saveSession({role:'faculty',token:facTok,name:r.body.name});setUser(r.body.name);
       document.getElementById('facLogin').classList.add('hidden');document.getElementById('facDash').classList.remove('hidden');loadFac();}
     else note(document.getElementById('facMsg'),'bad',esc(r.body.error));
-  });
+  }));
 };
 var onlyPass=false;
 document.getElementById('onlyPass').onchange=function(e){onlyPass=e.target.checked;loadFac();};
+document.getElementById('facCapBtn').onclick=function(){
+  var cap=document.getElementById('facCapInput').value;
+  run(this,api('/api/faculty/capacity',{method:'POST',token:facTok,body:{capacity:cap}}).then(function(r){
+    if(r.ok){toast('Your limit is now '+r.body.capacity+' team'+(r.body.capacity===1?'':'s'));loadFac();}
+    else toast(r.body.error);
+  }));
+};
 function loadFac(){api('/api/faculty/groups',{token:facTok}).then(function(r){
   if(!r.ok)return;
   var used=r.body.seatsUsed,max=r.body.capacity;
   document.getElementById('capUsed').textContent=used;document.getElementById('capMax').textContent=max;
-  document.getElementById('capBar').style.width=Math.min(100,used/max*100)+'%';
+  document.getElementById('capBar').style.width=(max>0?Math.min(100,used/max*100):0)+'%';
+  var ci=document.getElementById('facCapInput');if(ci&&document.activeElement!==ci)ci.value=max;
   var full=used>=max;
   var qualify=r.body.groups.filter(function(g){return g.valid;}).length;
   document.getElementById('facSummary').textContent=r.body.groups.length+' pending · '+qualify+' qualify';
@@ -813,7 +932,7 @@ function loadFac(){api('/api/faculty/groups',{token:facTok}).then(function(r){
   document.getElementById('facGroups').innerHTML=groups.map(function(g){
     var canAccept=g.valid&&g.status!=='accepted'&&!full;
     return '<div class="gcard"><div class="g-hd"><span class="gid">'+esc(g.id)+'</span>'+qualPill(g.valid)+'<span style="margin-left:auto">'+statusPill(g.status)+'</span></div>'+
-      '<div class="g-bd"><div class="members">'+g.members.map(memberRow).join('')+'</div>'+(g.valid?'':'<div class="note bad" style="margin-top:10px">'+problemList(g.problems)+'</div>')+'</div>'+
+      '<div class="g-bd"><div class="members">'+g.members.map(memberRow).join('')+'</div>'+(g.valid?'':'<div style="margin-top:10px">'+constraintsHtml(g.checks)+'</div>')+'</div>'+
       '<div class="g-ft">'+(g.faculty?'<span class="muted" style="font-size:12px">'+esc(g.faculty)+'</span>':'')+'<span style="flex:1"></span>'+
       '<button class="btn sm ok" data-accept="'+g.id+'"'+(canAccept?'':' disabled')+'>Accept</button>'+
       '<button class="btn sm danger" data-reject="'+g.id+'">Reject</button></div></div>';
@@ -822,20 +941,20 @@ function loadFac(){api('/api/faculty/groups',{token:facTok}).then(function(r){
 document.getElementById('facGroups').addEventListener('click',function(e){
   var a=e.target.closest('[data-accept]'),j=e.target.closest('[data-reject]');if(!a&&!j)return;
   var id=(a||j).getAttribute(a?'data-accept':'data-reject');
-  api('/api/faculty/decision',{method:'POST',token:facTok,body:{groupId:id,decision:a?'accept':'reject'}}).then(function(r){
+  run(a||j,api('/api/faculty/decision',{method:'POST',token:facTok,body:{groupId:id,decision:a?'accept':'reject'}}).then(function(r){
     if(!r.ok)alert(r.body.error+(r.body.problems?'\n- '+r.body.problems.join('\n- '):''));loadFac();
-  });
+  }));
 });
 
 /* ---------------- admin ---------------- */
 document.getElementById('admSignin').onclick=function(){
   var username=document.getElementById('admUser').value.trim(),password=document.getElementById('admPass').value;
-  api('/api/admin/login',{method:'POST',body:{username:username,password:password}}).then(function(r){
+  run(this,api('/api/admin/login',{method:'POST',body:{username:username,password:password}}).then(function(r){
     if(r.ok){admTok=r.body.token;saveSession({role:'admin',token:admTok});setUser('Administrator');
       document.getElementById('admLogin').classList.add('hidden');document.getElementById('admDash').classList.remove('hidden');
-      loadAdmStudents();loadAdmFaculty();loadAdmQueries();}
+      loadAdmStudents();loadAdmFaculty();loadAdmQueries();startAdmPoll();}
     else note(document.getElementById('admMsg'),'bad',esc(r.body.error));
-  });
+  }));
 };
 document.querySelectorAll('#view-admin [data-atab]').forEach(function(t){t.onclick=function(){
   var v=t.getAttribute('data-atab');tabSwitch('view-admin','data-atab',v);
@@ -843,6 +962,8 @@ document.querySelectorAll('#view-admin [data-atab]').forEach(function(t){t.oncli
   document.getElementById('atab-faculty').classList.toggle('hidden',v!=='faculty');
   document.getElementById('atab-queries').classList.toggle('hidden',v!=='queries');
   if(v==='queries')loadAdmQueries();
+  if(v==='faculty')loadAdmFaculty();
+  if(v==='students')loadAdmStudents();
 };});
 function timeAgo(ts){var s=Math.floor((Date.now()-ts)/1000);if(s<60)return s+'s ago';var m=Math.floor(s/60);if(m<60)return m+'m ago';var h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 function loadAdmQueries(){api('/api/admin/queries',{token:admTok}).then(function(r){
@@ -857,7 +978,7 @@ function loadAdmQueries(){api('/api/admin/queries',{token:admTok}).then(function
 });}
 document.getElementById('admQRows').addEventListener('click',function(e){
   var b=e.target.closest('[data-qid]');if(!b)return;
-  api('/api/admin/query-resolve',{method:'POST',token:admTok,body:{id:b.getAttribute('data-qid')}}).then(function(){loadAdmQueries();});
+  run(b,api('/api/admin/query-resolve',{method:'POST',token:admTok,body:{id:b.getAttribute('data-qid')}}).then(function(){loadAdmQueries();}));
 });
 var admStuState={q:'',page:1,pages:1},admStuSeq=0;
 function loadAdmStudents(){
@@ -868,8 +989,9 @@ function loadAdmStudents(){
     document.getElementById('admStuCount').textContent=r.body.total.toLocaleString()+' students';
     document.getElementById('admStuPage').textContent='Page '+r.body.page+' of '+r.body.pages;
     document.getElementById('admStuRows').innerHTML=r.body.rows.map(function(s){
-      var pw=s.changed?'<span class="mini">changed</span>':'<span class="mono">'+esc(s.initialPassword)+'</span>';
-      return '<tr><td class="mono">'+esc(s.reg)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.school)+'</td><td class="mono">'+esc(s.email)+'</td><td>'+pw+'</td><td><button class="btn sm" data-reset="'+esc(s.reg)+'">Reset</button></td></tr>';
+      var stt=s.registered?'<span class="pill accepted" style="font-size:10px;padding:1px 7px">registered</span>':'<span class="pill pending" style="font-size:10px;padding:1px 7px">not yet</span>';
+      var hk='<span class="mono" style="font-size:11.5px">'+esc(s.hashkey)+'</span> '+stt;
+      return '<tr><td class="mono">'+esc(s.reg)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.school)+'</td><td class="mono">'+esc(s.email)+'</td><td>'+hk+'</td><td><button class="btn sm" data-reset="'+esc(s.reg)+'">Reset</button></td></tr>';
     }).join('')||'<tr><td colspan="6" class="mini">No matches.</td></tr>';
   });
 }
@@ -880,10 +1002,10 @@ document.getElementById('admStuNext').onclick=function(){if(admStuState.page<adm
 document.getElementById('admStuRows').addEventListener('click',function(e){
   var b=e.target.closest('[data-reset]');if(!b)return;
   var reg=b.getAttribute('data-reset');
-  api('/api/admin/reset-password',{method:'POST',token:admTok,body:{reg:reg}}).then(function(r){
-    if(r.ok){alert('Reset '+reg+' to initial password: '+r.body.initialPassword);loadAdmStudents();}
+  run(b,api('/api/admin/reset-password',{method:'POST',token:admTok,body:{reg:reg}}).then(function(r){
+    if(r.ok){alert('Registration reset for '+reg+'.\nThey sign in again with their hashkey:\n\n'+r.body.hashkey);loadAdmStudents();}
     else alert(r.body.error);
-  });
+  }));
 });
 function loadAdmFaculty(){api('/api/admin/faculty',{token:admTok}).then(function(r){
   if(!r.ok)return;
@@ -894,14 +1016,26 @@ function loadAdmFaculty(){api('/api/admin/faculty',{token:admTok}).then(function
 });}
 
 document.getElementById('admExport').onclick=function(){
-  fetch('/api/admin/export',{headers:{'Authorization':'Bearer '+admTok}}).then(function(r){
+  run(this,fetch('/api/admin/export',{headers:{'Authorization':'Bearer '+admTok}}).then(function(r){
     if(!r.ok)throw 0;return r.blob();
   }).then(function(b){
     var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='allocations.csv';
     document.body.appendChild(a);a.click();setTimeout(function(){a.remove();URL.revokeObjectURL(a.href);},100);
     toast('Downloading allocations.csv');
-  }).catch(function(){toast('Export failed. Sign in as admin.');});
+  }).catch(function(){toast('Export failed. Sign in as admin.');}));
 };
+document.getElementById('admResetAll').onclick=function(){
+  var c=prompt('This permanently deletes EVERY team and all faculty allocations, starting a fresh round.\n\nType RESETALL to confirm:');
+  if(c===null)return;
+  run(this,api('/api/admin/reset-all',{method:'POST',token:admTok,body:{confirm:c}}).then(function(r){
+    if(r.ok){toast('All allocations reset — '+r.body.cleared+' team'+(r.body.cleared===1?'':'s')+' cleared');loadAdmStudents();loadAdmFaculty();loadAdmQueries();}
+    else toast(r.body.error);
+  }));
+};
+/* admin dynamic updates: keep faculty slots + query badge fresh while signed in */
+var admPoll=null;
+function startAdmPoll(){stopAdmPoll();admPoll=setInterval(function(){if(!admTok){stopAdmPoll();return;}loadAdmFaculty();loadAdmQueries();},8000);}
+function stopAdmPoll(){if(admPoll){clearInterval(admPoll);admPoll=null;}}
 
 /* password show/hide eye toggle on every password field */
 var EYE='<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3.2"/></svg>';
@@ -941,14 +1075,17 @@ tbtn.onclick=function(){theme=(theme==='dark')?'light':'dark';localStorage.setIt
 onEnter(['stReg','stPass'],'stLoginBtn');
 onEnter(['facEmail','facPass'],'facSignin');
 onEnter(['admUser','admPass'],'admSignin');
+onEnter(['regPass','regPass2'],'regBtn');
+
+/* show the demo student's first-time hashkey on the landing */
+api('/api/registration-demo').then(function(r){var el=document.getElementById('demoHashkey');if(el)el.textContent=(r.body&&r.body.registered)?'(registered — reset via admin)':((r.body&&r.body.hashkey)||'—');});
 
 /* restore a saved session on load, so a refresh does not sign you out */
 function restoreSession(){
   var s=getSession();if(!s||!s.token)return false;
-  if(s.role==='student'){stTok=s.token;stReg=s.reg;setUser(s.name);
+  if(s.role==='student'){stTok=s.token;stReg=s.reg;stScope=!!s.scope;setUser(s.name);
     document.getElementById('stLogin').classList.add('hidden');document.getElementById('stApp').classList.remove('hidden');
-    document.getElementById('stMembers').value=s.reg+'\n';
-    api('/api/student/mygroups',{token:stTok}).then(function(r){if(r.status===401)return;loadMyGroups();loadStudentFacDir();loadStudentDir();composeGuide();});
+    loadMyGroups();loadStudentFacDir();loadStudentDir();
     applyView('student');return true;}
   if(s.role==='faculty'){facTok=s.token;setUser(s.name);
     document.getElementById('facLogin').classList.add('hidden');document.getElementById('facDash').classList.remove('hidden');
@@ -956,7 +1093,7 @@ function restoreSession(){
     applyView('faculty');return true;}
   if(s.role==='admin'){admTok=s.token;setUser('Administrator');
     document.getElementById('admLogin').classList.add('hidden');document.getElementById('admDash').classList.remove('hidden');
-    api('/api/admin/queries',{token:admTok}).then(function(r){if(r.status===401)return;loadAdmStudents();loadAdmFaculty();loadAdmQueries();});
+    loadAdmStudents();loadAdmFaculty();loadAdmQueries();startAdmPoll();
     applyView('admin');return true;}
   return false;
 }
