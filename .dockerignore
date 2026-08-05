@@ -1,6 +1,10 @@
 node_modules
 deploy
-portal/data/db.json
-portal/data/.vault_key
 .git
 *.log
+# keep db.json + .vault_key IN the image so a fresh Postgres/SQLite self-seeds the
+# demo data (synthetic; for real data set VAULT_KEY and don't commit these).
+# Exclude the local SQLite runtime file so a stale copy isn't baked into the image.
+portal/data/portal.db
+portal/data/portal.db-wal
+portal/data/portal.db-shm

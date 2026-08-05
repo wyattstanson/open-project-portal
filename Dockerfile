@@ -4,11 +4,14 @@
 # --experimental-sqlite flag; the flag is harmless on newer versions.
 FROM node:22-alpine
 WORKDIR /app
+# Install runtime deps first for better layer caching. The only dependency is `pg`,
+# and it is loaded ONLY when DATABASE_URL is set; the SQLite path stays dependency-free.
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev --no-audit --no-fund
 COPY . .
 ENV PORT=4000
 ENV NODE_ENV=production
 ENV UV_THREADPOOL_SIZE=64
 ENV NODE_OPTIONS=--experimental-sqlite
 EXPOSE 4000
-# no npm install needed: the app uses only Node built-ins (http, crypto, sqlite)
-CMD ["node", "--experimental-sqlite", "portal/portal-server.js"]
+CMD ["node", "--experimental-sqlite", "portal/supervise.js"]

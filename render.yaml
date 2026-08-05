@@ -10,7 +10,7 @@ services:
     plan: free
     region: singapore          # closest to India; change if you prefer
     buildCommand: npm install   # no dependencies, effectively a no-op
-    startCommand: node --experimental-sqlite portal/portal-server.js
+    startCommand: node --experimental-sqlite portal/supervise.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION

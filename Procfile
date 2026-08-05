@@ -1,1 +1,1 @@
-web: node --experimental-sqlite portal/portal-server.js
+web: node --experimental-sqlite portal/supervise.js
