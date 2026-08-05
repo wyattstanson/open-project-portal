@@ -56,20 +56,19 @@ function initialData() {
   }
 }
 
-// Open SQLite (imports the seed on first run), then load the working set into
-// memory. Reads are served from memory (O(1)); every write goes THROUGH to
-// SQLite per change (durable, no whole-file rewrite).
-store.init(initialData);
-let db = store.loadAll();
+// The store (SQLite by default, Postgres when DATABASE_URL is set) is opened in
+// boot() at the bottom — its init/loadAll are async so a real DB connection works.
+// Reads are served from `db` in memory (O(1)); every write goes THROUGH to the store.
+let db;
 
 // Lock the vault to whichever key actually decrypts this database, so a wrong
 // or stale VAULT_KEY env var can never break email lookup / login.
-(function lockKey() {
+function lockKey() {
   const first = Object.values(db.students)[0];
   if (first && first.email && !vault.selectKeyFor(first.email)) {
     console.warn('WARNING: no available key decrypts the student emails; check VAULT_KEY / .vault_key');
   }
-})();
+}
 
 // O(1) login lookup: emailHash -> student. Built once at startup so a login on
 // a 10,000-row roster is a single hash-map hit, not a scan of every record.
@@ -81,7 +80,6 @@ function reindex() {
     if (s.emailHash) emailIndex.set(s.emailHash, s);
   }
 }
-reindex();
 
 // The documented INITIAL passwords. We never store plaintext; these are the
 // known defaults, shown to admin (who can also reset an account). Current
@@ -91,6 +89,41 @@ function initialFacultyPw(email) {
   if (email === 'teacher@domain') return 'teach123';
   const m = String(email).match(/^faculty0*(\d+)@/);
   return m ? 'faculty' + m[1] : '';
+}
+
+// ---- student registration & password rules (M4) ----
+// A student's self-password must be strong: 8+ chars with lower + upper + digit + '_'.
+function passwordProblems(pw) {
+  pw = String(pw || ''); const p = [];
+  if (pw.length < 8) p.push('at least 8 characters');
+  if (!/[a-z]/.test(pw)) p.push('a lowercase letter');
+  if (!/[A-Z]/.test(pw)) p.push('an uppercase letter');
+  if (!/[0-9]/.test(pw)) p.push('a number');
+  if (!/_/.test(pw)) p.push('an underscore ( _ )');
+  return p;
+}
+// "Password unique to all": fingerprint -> reg, so we can reject a password already
+// used by another student WITHOUT ever storing anything reversible.
+const pwFingerprints = new Map();
+function rebuildPwFingerprints() {
+  pwFingerprints.clear();
+  for (const reg in db.students) { const fp = db.students[reg].pwFp; if (fp) pwFingerprints.set(fp, reg); }
+}
+// Apply a new self-password to a student (shared by registration + change-password):
+// validates strength + global uniqueness, hashes it, and marks them registered.
+async function applySelfPassword(st, newPassword) {
+  const probs = passwordProblems(newPassword);
+  if (probs.length) return { error: 'Your password needs ' + probs.join(', ') + '.', problems: probs, code: 400 };
+  const fp = vault.pwFingerprint(newPassword);
+  const owner = pwFingerprints.get(fp);
+  if (owner && owner !== st.reg) return { error: 'That password is already in use by another student. Please choose a different one.', code: 409 };
+  st.passwordHash = await vault.hashPassword(newPassword);
+  if (st.pwFp) pwFingerprints.delete(st.pwFp);
+  st.pwFp = fp; pwFingerprints.set(fp, st.reg);
+  st.changedPassword = true;                              // registered = has a self-password
+  const ce = studentArrByReg.get(st.reg); if (ce) ce.changed = true;
+  store.saveStudent(st);
+  return { ok: true };
 }
 
 // In-memory, pre-decrypted student array for fast admin/faculty listing + search.
@@ -109,12 +142,14 @@ function buildStudentArr() {
     studentArr.push(e); studentArrByReg.set(reg, e);
   }
 }
-buildStudentArr();
-
-// distinct non-SCOPE SCHOOLS (keyed by school, so SMEC counts once) for the guide
-let OTHER_SCHOOLS = [...new Set(studentArr.filter((s) => !s.scope).map((s) => engine.schoolKey(s.school)))].sort();
-// all distinct branches/schools (incl. SCOPE) for the "sort by branch" filters
-let BRANCHES = [...new Set(studentArr.map((s) => engine.schoolKey(s.school)))].sort();
+// distinct non-SCOPE SCHOOLS (keyed by school, so SMEC counts once) for the guide,
+// and all distinct branches/schools (incl. SCOPE) for the "sort by branch" filters.
+// Computed in boot() once the roster is loaded.
+let OTHER_SCHOOLS = [], BRANCHES = [];
+function computeSchoolLists() {
+  OTHER_SCHOOLS = [...new Set(studentArr.filter((s) => !s.scope).map((s) => engine.schoolKey(s.school)))].sort();
+  BRANCHES = [...new Set(studentArr.map((s) => engine.schoolKey(s.school)))].sort();
+}
 
 // paginate + optional substring search over a pre-lowercased haystack
 function pageOf(arr, q, page, size) {
@@ -142,11 +177,51 @@ function findStudentByEmail(email) {
   return emailIndex.get(vault.hashEmail(email)) || null;   // O(1)
 }
 function seatsUsed(email) { return db.groups.filter((g) => g.status === 'accepted' && g.faculty === email).length; }
+// format an epoch-ms instant as an India-time (IST, UTC+5:30) wall-clock string
+function istStamp(ms) {
+  if (!ms) return '';
+  const d = new Date(ms + 5.5 * 3600 * 1000); const p = (n) => String(n).padStart(2, '0');
+  return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) + ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds()) + ' IST';
+}
+function empIdFor(idx) { return idx >= 0 ? 'EMP' + String(idx + 1).padStart(4, '0') : ''; }
 // slots held: a selection (requested) OR an acceptance both consume an available slot
 function facultyLoad(email) { return db.groups.filter((g) => g.status !== 'rejected' && (g.faculty === email || g.requestedFaculty === email)).length; }
 
 // one-student-one-group: the active (non-rejected) group a reg belongs to, if any
 function activeGroupOf(reg) { return db.groups.find((g) => g.status !== 'rejected' && g.members.includes(reg)); }
+// invitation model: a SCOPE student's own team, created lazily the first time they
+// invite someone. The leader is a member with consent already 'accepted'.
+function ensureGroupFor(reg) {
+  const existing = activeGroupOf(reg);
+  if (existing) return existing;
+  const st = db.students[reg];
+  if (!st || !st.scope) return null;                 // only SCOPE students can lead a team
+  const g = { id: nextGroupId(), members: [reg], status: 'pending', faculty: null,
+    requestedFaculty: null, submittedBy: reg, consent: { [reg]: 'accepted' }, createdAt: Date.now() };
+  db.groups.push(g); store.saveGroup(g);
+  return g;
+}
+// can `target` be invited into group `g` without breaking 2 SCOPE + 3 distinct schools?
+// Returns an error string, or null if the invite is allowed.
+function inviteBlock(g, target) {
+  const info = engine.schoolOf(target.slice(2, 5), MAP);
+  const cur = g.members.map((r) => engine.schoolOf(r.slice(2, 5), MAP));
+  const scopeCount = cur.filter((x) => x.scope).length;
+  const usedSchools = new Set(cur.filter((x) => !x.scope && x.known).map((x) => engine.schoolKey(x.school)));
+  if (info.scope) { if (scopeCount >= 2) return 'Your team already has its 2 SCOPE members.'; return null; }
+  if (!info.known) return 'That student has an unknown branch code and cannot be placed.';
+  const key = engine.schoolKey(info.school);
+  if (usedSchools.has(key)) return 'Your team already has a member from that school.';
+  if (usedSchools.size >= 3) return 'Your team already has 3 different schools.';
+  return null;
+}
+// a pending team that has lost a member should not keep holding a faculty slot
+function clearStaleRequest(g) {
+  if (g && g.status === 'pending' && g.requestedFaculty && !(groupReady(g) && validateGroup(g.members).valid)) {
+    g.requestedFaculty = null; return true;
+  }
+  return false;
+}
 // consent: seeded groups (no consent map) are treated as already accepted
 function consentOf(g, reg) { if (!g.consent) return 'accepted'; return g.consent[reg] || 'pending'; }
 function groupReady(g) { return g.members.every((r) => consentOf(g, r) === 'accepted'); }
@@ -183,6 +258,25 @@ function validateGroup(members) {
   return { valid: problems.length === 0, problems, people };
 }
 
+// The full list of team constraints, each with its current pass/fail state. Used to
+// render a checklist that shows EVERY rule and highlights the ones not yet met.
+function constraintChecks(members) {
+  const people = members.map((reg) => engine.schoolOf(String(reg).slice(2, 5), MAP));
+  const scope = people.filter((p) => p.scope);
+  const other = people.filter((p) => !p.scope && p.known);
+  const unknown = people.filter((p) => !p.known);
+  const otherSchools = other.map((p) => engine.schoolKey(p.school));
+  const distinct = new Set(otherSchools);
+  return [
+    { key: 'size', label: 'Exactly 5 members', ok: members.length === 5, detail: members.length + ' / 5' },
+    { key: 'unique', label: 'No repeated registration number', ok: new Set(members).size === members.length },
+    { key: 'scope', label: 'Exactly 2 SCOPE members', ok: scope.length === 2, detail: scope.length + ' / 2' },
+    { key: 'other', label: 'Exactly 3 members from other schools', ok: other.length === 3, detail: other.length + ' / 3' },
+    { key: 'known', label: 'Every member has a recognised branch code', ok: unknown.length === 0, detail: unknown.length ? unknown.length + ' unknown' : '' },
+    { key: 'distinct', label: 'The 3 other-school members are from 3 different schools', ok: distinct.size === otherSchools.length, detail: otherSchools.length ? distinct.size + ' distinct' : '' },
+  ];
+}
+
 // Build a group view. opts.reveal (faculty) shows every real email.
 // opts.selfReg (a student) shows only that student's own real email; all
 // teammates stay masked. Default: everything masked.
@@ -196,7 +290,7 @@ function groupView(g, opts) {
     id: g.id, status: g.status, faculty: g.faculty, facultyName: asg ? asg.name : null, createdAt: g.createdAt,
     requestedFaculty: g.requestedFaculty || null, requestedFacultyName: rf ? rf.name : null, requestedFacultyId: rfIdx >= 0 ? rfIdx : null,
     leader: g.submittedBy, ready: groupReady(g),
-    valid: v.valid, problems: v.problems,
+    valid: v.valid, problems: v.problems, checks: constraintChecks(g.members),
     members: v.people.map((p) => {
       const st = db.students[p.reg];
       let email = null;
@@ -233,11 +327,11 @@ function serveStatic(res, pathname) {
 }
 
 // ---------------------------------------------------------------- routes
-const server = http.createServer(async (req, res) => {
+async function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
 
-  if (p === '/api/health') return sendJSON(res, 200, { ok: true, students: Object.keys(db.students).length, groups: db.groups.length });
+  if (p === '/api/health') return sendJSON(res, 200, { ok: true, students: Object.keys(db.students).length, groups: db.groups.length, pid: process.pid });
 
   // ---- FACULTY login ----
   if (p === '/api/faculty/login' && req.method === 'POST') {
@@ -253,12 +347,14 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/faculty/groups' && req.method === 'GET') {
     const sess = facultyAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as faculty first.' });
     const f = findFaculty(sess.email);
-    // a group only reaches faculty once every member has accepted (ready).
-    // Show groups that selected me (or my accepted ones), leader-approved.
+    // A team reaches a faculty ONLY when it explicitly chose that faculty, is complete
+    // (all members accepted), and satisfies the constraints. This is what makes "request
+    // sent to faculty" reliably land with the right person (and stops unselected teams
+    // flooding every faculty's queue).
     const groups = db.groups
       .filter((g) => g.faculty === sess.email ||
-        (g.status === 'pending' && groupReady(g) && (!g.requestedFaculty || g.requestedFaculty === sess.email)))
-      .sort((a, b) => (b.requestedFaculty === sess.email ? 1 : 0) - (a.requestedFaculty === sess.email ? 1 : 0) || a.createdAt - b.createdAt)
+        (g.status === 'pending' && g.requestedFaculty === sess.email && groupReady(g) && validateGroup(g.members).valid))
+      .sort((a, b) => (a.faculty === sess.email ? 1 : 0) - (b.faculty === sess.email ? 1 : 0) || a.createdAt - b.createdAt)
       .map((g) => groupView(g, { reveal: true }));
     return sendJSON(res, 200, { groups, capacity: f.capacity, seatsUsed: seatsUsed(f.email) });
   }
@@ -277,7 +373,7 @@ const server = http.createServer(async (req, res) => {
       if (g.requestedFaculty && g.requestedFaculty !== f.email) return sendJSON(res, 409, { error: 'This group selected a different faculty.' });
       if (!groupReady(g)) return sendJSON(res, 409, { error: 'Not all members have accepted the group yet.' });
       if (seatsUsed(f.email) >= f.capacity) return sendJSON(res, 409, { error: 'No seats left. You are at capacity.' });
-      g.status = 'accepted'; g.faculty = f.email;
+      g.status = 'accepted'; g.faculty = f.email; g.approvedAt = Date.now();   // "approved" timestamp
     } else if (decision === 'reject') {
       g.status = 'rejected'; g.faculty = null;
     } else return sendJSON(res, 400, { error: 'decision must be accept or reject.' });
@@ -285,20 +381,42 @@ const server = http.createServer(async (req, res) => {
     return sendJSON(res, 200, { ok: true, group: groupView(g, { reveal: true }), seatsUsed: seatsUsed(f.email), capacity: f.capacity });
   }
 
+  // ---- FACULTY: set my own limit — how many teams I am willing to take on ----
+  if (p === '/api/faculty/capacity' && req.method === 'POST') {
+    const sess = facultyAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as faculty first.' });
+    const f = findFaculty(sess.email);
+    const { capacity } = await readBody(req);
+    const cap = parseInt(capacity, 10);
+    if (!Number.isFinite(cap)) return sendJSON(res, 400, { error: 'Enter a whole number.' });
+    const clamped = Math.max(0, Math.min(50, cap));
+    const used = seatsUsed(f.email);
+    if (clamped < used) return sendJSON(res, 409, { error: 'You have already accepted ' + used + ' team(s); your limit cannot be below that.' });
+    f.capacity = clamped; store.saveFacultyCapacity(f.email, clamped);
+    return sendJSON(res, 200, { ok: true, capacity: clamped, seatsUsed: used });
+  }
+
   // ---- STUDENT login (registration number + password). Emails are never used
   //      by students; only teachers and admin ever see email addresses. ----
   if (p === '/api/student/login' && req.method === 'POST') {
     const body = await readBody(req);
     const raw = String(body.reg || body.email || body.id || '').trim();
-    const password = body.password;
+    const secret = body.password;                          // their password, OR (first time) their hashkey
     const st = raw.includes('@') ? findStudentByEmail(raw) : db.students[raw.toUpperCase().replace(/\s+/g, '')];
-    const ok = st && st.passwordHash && await vault.verifyPassword(password || '', st.passwordHash);
-    if (!ok) return sendJSON(res, 401, { error: 'Incorrect registration number or password.' });
+    if (!st) return sendJSON(res, 401, { error: 'Incorrect registration number.' });
+    const registered = !!st.changedPassword;               // registered = has set a self-password
+    let mustRegister = false;
+    if (registered) {
+      if (!(await vault.verifyPassword(secret || '', st.passwordHash))) return sendJSON(res, 401, { error: 'Incorrect registration number or password.' });
+    } else {
+      // first login: authenticate with the one-time hashkey collected from the proctor
+      if (!vault.hashkeyMatches(st.reg, secret)) return sendJSON(res, 401, { error: 'Incorrect hashkey. Collect your hashkey from your proctor, then set your password.' });
+      mustRegister = true;                                 // force them to set a self-password now
+    }
     const tok = vault.newToken();
-    sessions.set(tok, { role: 'student', reg: st.reg, name: st.name });
+    sessions.set(tok, { role: 'student', reg: st.reg, name: st.name, mustRegister });
     const wasReset = !!st.passwordResetNotice;
     if (wasReset) { st.passwordResetNotice = false; store.saveStudent(st); }   // one-time notice
-    return sendJSON(res, 200, { token: tok, reg: st.reg, name: st.name, school: st.school, changedPassword: !!st.changedPassword, passwordReset: wasReset });
+    return sendJSON(res, 200, { token: tok, reg: st.reg, name: st.name, school: st.school, scope: !!st.scope, changedPassword: registered, mustRegister: mustRegister, passwordReset: wasReset });
   }
 
   // ---- STUDENT change password (writes a new one-way hash) ----
@@ -307,11 +425,20 @@ const server = http.createServer(async (req, res) => {
     const st = db.students[sess.reg]; if (!st) return sendJSON(res, 404, { error: 'Account not found.' });
     const { currentPassword, newPassword } = await readBody(req);
     if (!(await vault.verifyPassword(currentPassword || '', st.passwordHash))) return sendJSON(res, 403, { error: 'Current password is incorrect.' });
-    if (!newPassword || String(newPassword).length < 6) return sendJSON(res, 400, { error: 'New password must be at least 6 characters.' });
-    st.passwordHash = await vault.hashPassword(newPassword);   // old password is unrecoverable
-    st.changedPassword = true;
-    const ce = studentArrByReg.get(sess.reg); if (ce) ce.changed = true;
-    store.saveStudent(st);
+    const r = await applySelfPassword(st, newPassword);        // strength + global uniqueness
+    if (r.error) return sendJSON(res, r.code, { error: r.error, problems: r.problems });
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  // ---- STUDENT: complete first-time registration by setting a self-password.
+  //      Used right after a hashkey login (session flagged mustRegister). ----
+  if (p === '/api/student/set-password' && req.method === 'POST') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in first.' });
+    const st = db.students[sess.reg]; if (!st) return sendJSON(res, 404, { error: 'Account not found.' });
+    const { newPassword } = await readBody(req);
+    const r = await applySelfPassword(st, newPassword);        // strength + global uniqueness
+    if (r.error) return sendJSON(res, r.code, { error: r.error, problems: r.problems });
+    sess.mustRegister = false;                                 // registration complete
     return sendJSON(res, 200, { ok: true });
   }
 
@@ -349,7 +476,7 @@ const server = http.createServer(async (req, res) => {
       count: regs.length, people,
       scopeCount: scope.length, scopeNeeded: 2, canAddScope: scope.length < 2,
       otherFilled: usedSchools.length, otherNeeded: 3, usedSchools, schools,
-      valid: regs.length === 5 && v.valid, problems: v.problems,
+      valid: regs.length === 5 && v.valid, problems: v.problems, checks: constraintChecks(regs),
     });
   }
 
@@ -376,6 +503,10 @@ const server = http.createServer(async (req, res) => {
     if (g.submittedBy !== sess.reg) return sendJSON(res, 403, { error: 'Only the team leader can choose the faculty.' });
     let email = null, name = null;
     if (facultyId !== '' && facultyId != null) {
+      // a team can only be sent to a faculty once it is complete and everyone has accepted
+      if (!groupReady(g)) return sendJSON(res, 409, { error: 'All members must accept before you can send the team to a faculty.' });
+      const gv = validateGroup(g.members);
+      if (!gv.valid) return sendJSON(res, 422, { error: 'Your team must have 2 SCOPE + 3 members from different schools first.', problems: gv.problems });
       const f = db.faculty[Number(facultyId)];
       if (!f) return sendJSON(res, 404, { error: 'Faculty not found.' });
       // count this faculty's load excluding this group's own current hold
@@ -383,8 +514,55 @@ const server = http.createServer(async (req, res) => {
       if (otherLoad >= f.capacity) return sendJSON(res, 409, { error: 'That faculty has no slots left. Please pick another.' });
       email = f.email; name = f.name;
     }
-    g.requestedFaculty = email; store.saveGroup(g);
+    g.requestedFaculty = email;
+    g.requestedAt = email ? Date.now() : null;             // "applied" timestamp
+    store.saveGroup(g);
     return sendJSON(res, 200, { ok: true, requestedFacultyName: name });
+  }
+
+  // ---- STUDENT (leader): invite one student into the team. One invite at a time:
+  //      the target must be free (no pending invite / not in any team). ----
+  if (p === '/api/student/invite' && req.method === 'POST') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const me = db.students[sess.reg];
+    if (!me || !me.scope) return sendJSON(res, 403, { error: 'Only a SCOPE student can lead a team and invite members.' });
+    const g = ensureGroupFor(sess.reg);
+    if (!g) return sendJSON(res, 403, { error: 'Only a SCOPE student can lead a team.' });
+    if (g.submittedBy !== sess.reg) return sendJSON(res, 403, { error: 'Only the team leader can invite members.' });
+    if (g.status === 'accepted') return sendJSON(res, 409, { error: 'Your team is already approved; it is locked.' });
+    const { reg } = await readBody(req);
+    const target = String(reg || '').trim().toUpperCase().replace(/\s+/g, '');
+    const st = db.students[target];
+    if (!st) return sendJSON(res, 404, { error: 'Student not found.' });
+    if (target === sess.reg) return sendJSON(res, 400, { error: 'You are already in your own team.' });
+    if (g.members.includes(target)) return sendJSON(res, 409, { error: 'That student is already in your team.' });
+    if (g.members.length >= 5) return sendJSON(res, 409, { error: 'Your team already has 5 members.' });
+    // one invitation at a time — cannot poach someone who already has a pending invite or a team
+    if (activeGroupOf(target)) return sendJSON(res, 409, { error: 'That student already has a pending invite or is already in a team.' });
+    const block = inviteBlock(g, target);
+    if (block) return sendJSON(res, 409, { error: block });
+    g.members.push(target);
+    if (!g.consent) g.consent = {};
+    g.consent[target] = 'pending';                    // they must accept
+    store.saveGroup(g);
+    return sendJSON(res, 200, { ok: true, invited: target, group: groupView(g, {}) });
+  }
+
+  // ---- STUDENT (leader): withdraw an invite / remove a member, freeing them. ----
+  if (p === '/api/student/uninvite' && req.method === 'POST') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const { reg } = await readBody(req);
+    const target = String(reg || '').trim().toUpperCase().replace(/\s+/g, '');
+    const g = activeGroupOf(sess.reg);
+    if (!g || g.submittedBy !== sess.reg) return sendJSON(res, 403, { error: 'Only the team leader can remove members.' });
+    if (g.status === 'accepted') return sendJSON(res, 409, { error: 'Your team is already approved; it is locked.' });
+    if (target === sess.reg) return sendJSON(res, 400, { error: 'You are the leader; you cannot remove yourself.' });
+    if (!g.members.includes(target)) return sendJSON(res, 404, { error: 'That student is not in your team.' });
+    g.members = g.members.filter((r) => r !== target);
+    if (g.consent) delete g.consent[target];
+    clearStaleRequest(g);                              // dropping a member releases any faculty hold
+    store.saveGroup(g);
+    return sendJSON(res, 200, { ok: true, removed: target, group: groupView(g, {}) });
   }
 
   // ---- FACULTY: searchable, paginated student directory (real emails) ----
@@ -413,7 +591,7 @@ const server = http.createServer(async (req, res) => {
     const arr = branchFilter(studentArr, url.searchParams.get('branch'));
     const r = pageOf(arr, url.searchParams.get('q'), url.searchParams.get('page'), url.searchParams.get('size'));
     const rows = r.rows.map((e) => ({ reg: e.reg, name: e.name, school: e.school, scope: e.scope, email: e.email,
-      initialPassword: e.changed ? null : initialStudentPw(e.name), changed: e.changed }));
+      hashkey: vault.hashkeyFor(e.reg), registered: e.changed }));
     return sendJSON(res, 200, { total: r.total, page: r.page, pages: r.pages, size: r.size, rows, branches: BRANCHES });
   }
 
@@ -430,15 +608,26 @@ const server = http.createServer(async (req, res) => {
   // ---- ADMIN: download all student-faculty allocations as CSV ----
   if (p === '/api/admin/export' && req.method === 'GET') {
     if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
-    const rows = [['Group', 'Status', 'Assigned faculty', 'Selected faculty', 'Slot', 'Reg no', 'Name', 'School', 'Type', 'Email']];
+    // One row PER TEAM (team-wise), with member lists, the guide's details, and the
+    // team-formation timestamps in IST (when applied for a faculty, when approved).
+    const rows = [['Team ID', 'Status', 'Members', 'Reg numbers', 'Schools',
+      'Guide name', 'Guide ID', 'Guide employee ID', 'Guide school',
+      'Formed (IST)', 'Applied to faculty (IST)', 'Approved (IST)']];
+    const sep = ' | ';
     for (const g of db.groups) {
-      const asg = g.faculty ? (db.faculty.find((f) => f.email === g.faculty) || {}).name || g.faculty : '';
-      const reqName = g.requestedFaculty ? (db.faculty.find((f) => f.email === g.requestedFaculty) || {}).name || g.requestedFaculty : '';
-      g.members.forEach((reg, i) => {
-        const s = db.students[reg] || {};
-        const info = engine.schoolOf(reg.slice(2, 5), MAP);
-        rows.push([g.id, g.status, asg, reqName, i + 1, reg, s.name || '', info.school, info.scope ? 'SCOPE' : 'Other', s.email ? vault.decrypt(s.email) : '']);
+      const guideEmail = g.faculty || g.requestedFaculty || null;
+      const gi = guideEmail ? db.faculty.findIndex((f) => f.email === guideEmail) : -1;
+      const guide = gi >= 0 ? db.faculty[gi] : null;
+      const names = [], regs = [], schools = [];
+      g.members.forEach((reg) => {
+        const s = db.students[reg] || {}; const info = engine.schoolOf(reg.slice(2, 5), MAP);
+        names.push(s.name || reg); regs.push(reg); schools.push(engine.schoolKey(info.school));
       });
+      rows.push([
+        g.id, g.status, names.join(sep), regs.join(sep), schools.join(sep),
+        guide ? guide.name : '', gi >= 0 ? gi : '', empIdFor(gi), guide ? (guide.school || '') : '',
+        istStamp(g.createdAt), istStamp(g.requestedAt), istStamp(g.approvedAt),
+      ]);
     }
     const csv = rows.map((r) => r.map((x) => '"' + String(x).replace(/"/g, '""') + '"').join(',')).join('\r\n');
     res.writeHead(200, {
@@ -449,17 +638,37 @@ const server = http.createServer(async (req, res) => {
     return res.end(csv);
   }
 
-  // ---- ADMIN: reset a student to their initial password ----
+  // ---- ADMIN: reset a student's registration. Clears their self-password so they
+  //      log in again with their hashkey (from the proctor) and set a new password. ----
   if (p === '/api/admin/reset-password' && req.method === 'POST') {
     if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
     const { reg } = await readBody(req);
     const s = db.students[reg]; if (!s) return sendJSON(res, 404, { error: 'Student not found.' });
-    const pw = initialStudentPw(s.name);
-    s.passwordHash = await vault.hashPassword(pw); s.changedPassword = false;
-    s.passwordResetNotice = true;   // student is told on their next login
+    s.passwordHash = null; s.changedPassword = false;         // un-register
+    s.passwordResetNotice = true;                             // student is told on next login
+    if (s.pwFp) { pwFingerprints.delete(s.pwFp); s.pwFp = null; }
     const e = studentArrByReg.get(reg); if (e) e.changed = false;
     store.saveStudent(s);
-    return sendJSON(res, 200, { ok: true, initialPassword: pw });
+    return sendJSON(res, 200, { ok: true, hashkey: vault.hashkeyFor(reg) });
+  }
+
+  // ---- PUBLIC: the demo student's reg + hashkey, so the landing page can show a
+  //      working first-time-registration example (synthetic data only). ----
+  if (p === '/api/registration-demo' && req.method === 'GET') {
+    const reg = '24BCE2312'; const s = db.students[reg];
+    return sendJSON(res, 200, { reg, hashkey: s ? vault.hashkeyFor(reg) : null, registered: !!(s && s.changedPassword) });
+  }
+
+  // ---- ADMIN: reset ALL allocations — wipe every team so a fresh round can start.
+  //      Guarded: the caller must type the exact word RESETALL. ----
+  if (p === '/api/admin/reset-all' && req.method === 'POST') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const { confirm } = await readBody(req);
+    if (String(confirm) !== 'RESETALL') return sendJSON(res, 400, { error: 'Type RESETALL exactly to confirm.' });
+    const cleared = db.groups.length;
+    db.groups = [];
+    store.deleteAllGroups();
+    return sendJSON(res, 200, { ok: true, cleared });
   }
 
   // ---- STUDENT: contact admin / raise a support query ----
@@ -510,7 +719,7 @@ const server = http.createServer(async (req, res) => {
       .filter((g) => g.members.includes(sess.reg))
       .sort((a, b) => a.createdAt - b.createdAt)
       .map((g) => groupView(g, {}));
-    return sendJSON(res, 200, { reg: sess.reg, name: sess.name, groups });
+    return sendJSON(res, 200, { reg: sess.reg, name: sess.name, scope: !!(db.students[sess.reg] || {}).scope, groups });
   }
 
   // ---- STUDENT submit a group (must include yourself) ----
@@ -554,9 +763,17 @@ const server = http.createServer(async (req, res) => {
     if (g.submittedBy === sess.reg) return sendJSON(res, 400, { error: 'You are the team leader; you cannot decline your own group.' });
     if (g.status === 'accepted') return sendJSON(res, 409, { error: 'This group has already been approved.' });
     if (!g.consent) g.consent = {};
-    g.consent[sess.reg] = decision === 'accept' ? 'accepted' : 'declined';
+    if (decision === 'accept') {
+      g.consent[sess.reg] = 'accepted';
+      store.saveGroup(g);
+      return sendJSON(res, 200, { ok: true, consent: 'accepted', ready: groupReady(g) });
+    }
+    // decline: leave the team entirely, which frees you and reopens the slot for the leader
+    g.members = g.members.filter((r) => r !== sess.reg);
+    delete g.consent[sess.reg];
+    clearStaleRequest(g);                              // an incomplete team releases its faculty hold
     store.saveGroup(g);
-    return sendJSON(res, 200, { ok: true, consent: g.consent[sess.reg], ready: groupReady(g) });
+    return sendJSON(res, 200, { ok: true, left: true });
   }
 
   // ---- roster (masked, no emails) so the student form can pick real regs ----
@@ -567,10 +784,55 @@ const server = http.createServer(async (req, res) => {
 
   if (p.startsWith('/api/')) return sendJSON(res, 404, { error: 'Unknown endpoint.' });
   return serveStatic(res, p);
+}
+
+// Every request is wrapped: an error in any endpoint returns 500 and the
+// process stays alive. One bad request can never crash the server.
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((e) => {
+    console.error('request error on', req.url, '-', e && e.message);
+    if (!res.headersSent) { try { sendJSON(res, 500, { error: 'Something went wrong. Please try again.' }); } catch (_) { try { res.end(); } catch (_) {} } }
+  });
 });
 
-server.listen(PORT, () => {
-  console.log('Portal backend on http://localhost:' + PORT);
-  console.log('Faculty demo login: teacher@domain / teach123');
-  console.log('Students: ' + Object.keys(db.students).length + ' | pending groups: ' + db.groups.filter((g) => g.status === 'pending').length);
-});
+// Last-resort safety nets so an unexpected error never takes the process down.
+process.on('uncaughtException', (e) => console.error('uncaughtException:', e && e.stack || e));
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e && e.stack || e));
+process.on('SIGTERM', () => { server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 5000); });
+
+// ---- pending faculty requests expire at IST midnight ----
+// A team that selected a faculty but wasn't accepted by midnight (India time) releases
+// that hold, so slots don't stay locked overnight. The team can re-request next day.
+const IST_OFFSET_MS = 5.5 * 3600 * 1000;
+function msUntilNextISTMidnight() {
+  const dayMs = 24 * 3600 * 1000;
+  const istNow = Date.now() + IST_OFFSET_MS;              // IST wall-clock as ms
+  return Math.ceil(istNow / dayMs) * dayMs - istNow;      // to the next IST midnight
+}
+function sweepExpiredRequests() {
+  let n = 0;
+  for (const g of db.groups) {
+    if (g.status === 'pending' && g.requestedFaculty) { g.requestedFaculty = null; store.saveGroup(g); n++; }
+  }
+  if (n) console.log('[midnight sweep] released ' + n + ' pending faculty request(s)');
+  scheduleMidnightSweep();
+}
+function scheduleMidnightSweep() { setTimeout(sweepExpiredRequests, msUntilNextISTMidnight() + 1000).unref(); }
+
+// Boot: open the store (async — Postgres connect or SQLite open), load the working
+// set into memory, build every index, then start serving. `await` works whether the
+// store returns a promise (Postgres) or a value (SQLite), so one path fits both.
+async function boot() {
+  await store.init(initialData);
+  db = await store.loadAll();
+  lockKey();
+  reindex();
+  buildStudentArr();
+  rebuildPwFingerprints();   // seed the "unique password" index from any already-registered students
+  computeSchoolLists();
+  scheduleMidnightSweep();
+  server.listen(PORT, () => {
+    console.log('Portal backend [' + (store.driver || 'sqlite') + '] on http://localhost:' + PORT + ' (pid ' + process.pid + ')');
+  });
+}
+boot().catch((e) => { console.error('startup failed:', (e && e.stack) || e); process.exit(1); });
