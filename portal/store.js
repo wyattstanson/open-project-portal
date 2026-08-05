@@ -15,6 +15,9 @@
  * ============================================================================
  */
 'use strict';
+// Postgres when DATABASE_URL is set (durable, server-backed); otherwise the
+// zero-dependency built-in SQLite below. The rest of the app is identical.
+if (process.env.DATABASE_URL) { module.exports = require('./store-pg.js'); return; }
 const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
@@ -43,6 +46,11 @@ function init(seeder) {
     CREATE TABLE IF NOT EXISTS queries(
       id TEXT PRIMARY KEY, reg TEXT, name TEXT, topic TEXT, message TEXT, status TEXT, createdAt INTEGER);
   `);
+  // migration: password-uniqueness fingerprint column (added M4). Ignore if present.
+  try { db.exec('ALTER TABLE students ADD COLUMN pwFp TEXT'); } catch (e) {}
+  // migration: team-formation timestamps (added M5) — when a faculty was requested / approved.
+  try { db.exec('ALTER TABLE teams ADD COLUMN requestedAt INTEGER'); } catch (e) {}
+  try { db.exec('ALTER TABLE teams ADD COLUMN approvedAt INTEGER'); } catch (e) {}
   const n = db.prepare('SELECT COUNT(*) AS c FROM students').get().c;
   if (n === 0 && seeder) importAll(seeder());
 }
@@ -50,7 +58,7 @@ function init(seeder) {
 function importAll(data) {
   const insStu = db.prepare('INSERT OR REPLACE INTO students(reg,name,school,scope,email,emailHash,passwordHash,changedPassword,passwordResetNotice) VALUES(?,?,?,?,?,?,?,?,?)');
   const insFac = db.prepare('INSERT OR REPLACE INTO faculty(email,name,school,capacity,passHash,fidx) VALUES(?,?,?,?,?,?)');
-  const insGrp = db.prepare('INSERT OR REPLACE INTO teams(id,status,faculty,requestedFaculty,submittedBy,createdAt) VALUES(?,?,?,?,?,?)');
+  const insGrp = db.prepare('INSERT OR REPLACE INTO teams(id,status,faculty,requestedFaculty,submittedBy,createdAt,requestedAt,approvedAt) VALUES(?,?,?,?,?,?,?,?)');
   const insMem = db.prepare('INSERT OR REPLACE INTO team_members(groupId,reg,ord,consent) VALUES(?,?,?,?)');
   const insQ = db.prepare('INSERT OR REPLACE INTO queries(id,reg,name,topic,message,status,createdAt) VALUES(?,?,?,?,?,?,?)');
   db.exec('BEGIN');
@@ -60,7 +68,7 @@ function importAll(data) {
     (data.faculty || []).forEach((f, i) => insFac.run(f.email, f.name, f.school || null, f.capacity, f.passHash, i));
     if (data.admin) db.prepare('INSERT OR REPLACE INTO admin(username,passHash) VALUES(?,?)').run(data.admin.username, data.admin.passHash);
     (data.groups || []).forEach((g) => {
-      insGrp.run(g.id, g.status, g.faculty || null, g.requestedFaculty || null, g.submittedBy || null, g.createdAt || Date.now());
+      insGrp.run(g.id, g.status, g.faculty || null, g.requestedFaculty || null, g.submittedBy || null, g.createdAt || Date.now(), g.requestedAt || null, g.approvedAt || null);
       g.members.forEach((reg, ord) => insMem.run(g.id, reg, ord, (g.consent && g.consent[reg]) || 'accepted'));
     });
     (data.queries || []).forEach((q) => insQ.run(q.id, q.reg, q.name, q.topic, q.message, q.status, q.createdAt));
@@ -73,7 +81,7 @@ function loadAll() {
   const students = {};
   for (const r of db.prepare('SELECT * FROM students').all()) {
     students[r.reg] = { reg: r.reg, name: r.name, school: r.school, scope: !!r.scope, email: r.email,
-      emailHash: r.emailHash, passwordHash: r.passwordHash, changedPassword: !!r.changedPassword, passwordResetNotice: !!r.passwordResetNotice };
+      emailHash: r.emailHash, passwordHash: r.passwordHash, changedPassword: !!r.changedPassword, passwordResetNotice: !!r.passwordResetNotice, pwFp: r.pwFp || null };
   }
   const faculty = db.prepare('SELECT * FROM faculty ORDER BY fidx').all()
     .map((r) => ({ email: r.email, name: r.name, school: r.school, capacity: r.capacity, passHash: r.passHash }));
@@ -86,7 +94,7 @@ function loadAll() {
   const groups = db.prepare('SELECT * FROM teams').all().map((r) => {
     const mems = memByGroup[r.id] || []; const consent = {}; mems.forEach((m) => { consent[m.reg] = m.consent; });
     return { id: r.id, status: r.status, faculty: r.faculty, requestedFaculty: r.requestedFaculty,
-      submittedBy: r.submittedBy, createdAt: r.createdAt, members: mems.map((m) => m.reg), consent };
+      submittedBy: r.submittedBy, createdAt: r.createdAt, requestedAt: r.requestedAt, approvedAt: r.approvedAt, members: mems.map((m) => m.reg), consent };
   });
   const queries = db.prepare('SELECT * FROM queries').all()
     .map((r) => ({ id: r.id, reg: r.reg, name: r.name, topic: r.topic, message: r.message, status: r.status, createdAt: r.createdAt }));
@@ -95,14 +103,14 @@ function loadAll() {
 
 // ---- targeted, durable writes (called alongside the in-memory mutation) ----
 function saveStudent(s) {
-  db.prepare('UPDATE students SET passwordHash=?, changedPassword=?, passwordResetNotice=? WHERE reg=?')
-    .run(s.passwordHash, s.changedPassword ? 1 : 0, s.passwordResetNotice ? 1 : 0, s.reg);
+  db.prepare('UPDATE students SET passwordHash=?, changedPassword=?, passwordResetNotice=?, pwFp=? WHERE reg=?')
+    .run(s.passwordHash, s.changedPassword ? 1 : 0, s.passwordResetNotice ? 1 : 0, s.pwFp || null, s.reg);
 }
 function saveGroup(g) {
   db.exec('BEGIN');
   try {
-    db.prepare('INSERT OR REPLACE INTO teams(id,status,faculty,requestedFaculty,submittedBy,createdAt) VALUES(?,?,?,?,?,?)')
-      .run(g.id, g.status, g.faculty || null, g.requestedFaculty || null, g.submittedBy || null, g.createdAt);
+    db.prepare('INSERT OR REPLACE INTO teams(id,status,faculty,requestedFaculty,submittedBy,createdAt,requestedAt,approvedAt) VALUES(?,?,?,?,?,?,?,?)')
+      .run(g.id, g.status, g.faculty || null, g.requestedFaculty || null, g.submittedBy || null, g.createdAt, g.requestedAt || null, g.approvedAt || null);
     db.prepare('DELETE FROM team_members WHERE groupId=?').run(g.id);
     const ins = db.prepare('INSERT INTO team_members(groupId,reg,ord,consent) VALUES(?,?,?,?)');
     g.members.forEach((reg, ord) => ins.run(g.id, reg, ord, (g.consent && g.consent[reg]) || 'accepted'));
@@ -119,5 +127,12 @@ function saveQuery(q) {
     .run(q.id, q.reg, q.name, q.topic, q.message, q.status, q.createdAt);
 }
 function saveQueryStatus(id, status) { db.prepare('UPDATE queries SET status=? WHERE id=?').run(status, id); }
+function saveFacultyCapacity(email, capacity) { db.prepare('UPDATE faculty SET capacity=? WHERE email=?').run(capacity, email); }
+// wipe every team + membership (admin "reset all allocations"); students/faculty/admin stay
+function deleteAllGroups() {
+  db.exec('BEGIN');
+  try { db.exec('DELETE FROM team_members'); db.exec('DELETE FROM teams'); db.exec('COMMIT'); }
+  catch (e) { db.exec('ROLLBACK'); throw e; }
+}
 
-module.exports = { init, loadAll, saveStudent, saveGroup, deleteGroup, saveQuery, saveQueryStatus };
+module.exports = { driver: 'sqlite', init, loadAll, saveStudent, saveGroup, deleteGroup, saveQuery, saveQueryStatus, saveFacultyCapacity, deleteAllGroups };
