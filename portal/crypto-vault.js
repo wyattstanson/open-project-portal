@@ -125,4 +125,27 @@ function verifyPassword(pw, stored) {
 }
 function newToken() { return crypto.randomBytes(24).toString('hex'); }
 
-module.exports = { encrypt, decrypt, mask, hashEmail, hashPassword, verifyPassword, hashPasswordSync, verifyPasswordSync, newToken, selectKeyFor };
+// ---- registration hashkey ----
+const HK_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+// Deterministic one-time key (16–26 alphanumeric) the admin hands out via proctors.
+// Derived from the reg number with the vault key as the secret: unique per student,
+// stable across restarts, and unguessable without the server key.
+function hashkeyFor(reg) {
+  const mac = crypto.createHmac('sha256', KEY).update('HASHKEY:' + String(reg).trim().toUpperCase()).digest();
+  const len = 16 + (mac[0] % 11);                       // 16..26 chars
+  let out = '';
+  for (let i = 0; i < len; i++) out += HK_ALPHABET[mac[i % mac.length] % 62];
+  return out;
+}
+// Constant-time compare for the hashkey a student types in.
+function hashkeyMatches(reg, given) {
+  const a = Buffer.from(hashkeyFor(reg)); const b = Buffer.from(String(given || ''));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+// Keyed fingerprint of a password, used ONLY to enforce global uniqueness without
+// storing anything reversible. Same password -> same fingerprint; not reversible.
+function pwFingerprint(pw) {
+  return crypto.createHmac('sha256', KEY).update('PWUNIQ:' + String(pw)).digest('hex');
+}
+
+module.exports = { encrypt, decrypt, mask, hashEmail, hashPassword, verifyPassword, hashPasswordSync, verifyPasswordSync, newToken, selectKeyFor, hashkeyFor, hashkeyMatches, pwFingerprint };
