@@ -184,6 +184,11 @@ function istStamp(ms) {
   return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) + ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds()) + ' IST';
 }
 function empIdFor(idx) { return idx >= 0 ? 'EMP' + String(idx + 1).padStart(4, '0') : ''; }
+// hashkeys may only be sent to an institutional VIT address, never a personal one
+const PROCTOR_EMAIL_DOMAIN = process.env.PROCTOR_EMAIL_DOMAIN || 'vit.ac.in';
+function isInstitutionalEmail(email) {
+  return new RegExp('^[^@\\s]+@' + PROCTOR_EMAIL_DOMAIN.replace(/\./g, '\\.') + '$', 'i').test(String(email || '').trim());
+}
 // slots held: a selection (requested) OR an acceptance both consume an available slot
 function facultyLoad(email) { return db.groups.filter((g) => g.status !== 'rejected' && (g.faculty === email || g.requestedFaculty === email)).length; }
 
@@ -614,7 +619,16 @@ async function handle(req, res) {
       'Guide name', 'Guide ID', 'Guide employee ID', 'Guide school',
       'Formed (IST)', 'Applied to faculty (IST)', 'Approved (IST)']];
     const sep = ' | ';
-    for (const g of db.groups) {
+    // arrange by faculty: all of a guide's teams together, accepted ones first;
+    // teams with no guide yet fall to the bottom.
+    const guideNameOf = (g) => { const em = g.faculty || g.requestedFaculty; if (!em) return '~~~'; const f = db.faculty.find((x) => x.email === em); return (f ? f.name : em).toLowerCase(); };
+    const ordered = db.groups.slice().sort((a, b) => {
+      const ga = guideNameOf(a), gb = guideNameOf(b);
+      if (ga !== gb) return ga < gb ? -1 : 1;
+      const sa = a.status === 'accepted' ? 0 : 1, sb = b.status === 'accepted' ? 0 : 1;
+      return sa - sb || String(a.id).localeCompare(String(b.id));
+    });
+    for (const g of ordered) {
       const guideEmail = g.faculty || g.requestedFaculty || null;
       const gi = guideEmail ? db.faculty.findIndex((f) => f.email === guideEmail) : -1;
       const guide = gi >= 0 ? db.faculty[gi] : null;
@@ -636,6 +650,48 @@ async function handle(req, res) {
       'Access-Control-Allow-Origin': '*',
     });
     return res.end(csv);
+  }
+
+  // ---- ADMIN: teams grouped under their faculty guide + formation progress ----
+  if (p === '/api/admin/allocations' && req.method === 'GET') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const teamView = (g) => ({
+      id: g.id, status: g.status, ready: groupReady(g), valid: validateGroup(g.members).valid,
+      approvedAt: g.approvedAt ? istStamp(g.approvedAt) : null, requestedAt: g.requestedAt ? istStamp(g.requestedAt) : null,
+      members: g.members.map((reg) => { const s = db.students[reg] || {}; const info = engine.schoolOf(reg.slice(2, 5), MAP); return { reg, name: s.name || '', school: engine.schoolKey(info.school), scope: info.scope }; }),
+    });
+    const byFac = {}; const unassigned = [];
+    for (const g of db.groups) {
+      if (g.status === 'rejected') continue;
+      const em = g.faculty || g.requestedFaculty;
+      if (em) { const f = db.faculty.find((x) => x.email === em);
+        (byFac[em] || (byFac[em] = { email: em, name: f ? f.name : em, school: f ? f.school : '', accepted: 0, teams: [] })); }
+      if (em) { byFac[em].teams.push(teamView(g)); if (g.status === 'accepted') byFac[em].accepted++; }
+      else unassigned.push(teamView(g));
+    }
+    const faculties = Object.values(byFac).sort((a, b) => a.name.localeCompare(b.name));
+    // progress: a team needs 2 SCOPE + 3 others, so total capacity is bounded by both pools
+    const formed = db.groups.filter((g) => g.status !== 'rejected').length;
+    const scopeCount = studentArr.filter((s) => s.scope).length;
+    const otherCount = studentArr.length - scopeCount;
+    const maxTeams = Math.min(Math.floor(scopeCount / 2), Math.floor(otherCount / 3));
+    const grouped = groupedRegSet().size;
+    return sendJSON(res, 200, {
+      faculties, unassigned,
+      stats: { formed, maxTeams, remaining: Math.max(0, maxTeams - formed), grouped, ungrouped: studentArr.length - grouped, students: studentArr.length },
+    });
+  }
+
+  // ---- ADMIN: prepare a proctor's hashkey sheet. Recipient MUST be an institutional
+  //      VIT address (no personal ids). Returns the list to hand out; delivery is done
+  //      by the admin (or an SMTP integration) — see DEPLOY notes. ----
+  if (p === '/api/admin/proctor-hashkeys' && req.method === 'POST') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const { email, branch } = await readBody(req);
+    if (!isInstitutionalEmail(email)) return sendJSON(res, 400, { error: 'Enter a VIT institutional email (…@' + PROCTOR_EMAIL_DOMAIN + '). Personal email ids are not allowed.' });
+    const arr = branch ? studentArr.filter((e) => engine.schoolKey(e.school) === branch) : studentArr;
+    const rows = arr.map((e) => ({ reg: e.reg, name: e.name, hashkey: vault.hashkeyFor(e.reg), registered: e.changed }));
+    return sendJSON(res, 200, { ok: true, email: String(email).trim(), branch: branch || 'all', count: rows.length, rows });
   }
 
   // ---- ADMIN: reset a student's registration. Clears their self-password so they

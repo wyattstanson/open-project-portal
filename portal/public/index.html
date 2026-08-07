@@ -239,6 +239,21 @@
   .checkitem .dt{margin-left:auto;font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink-3);}
   .checkitem.bad .dt{color:var(--bad);}
 
+  /* ===== admin allocations: stat tiles + per-faculty cards ===== */
+  .statrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);box-shadow:var(--shadow);padding:14px 16px;}
+  .stat .v{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+  .stat .k{font-size:12px;color:var(--ink-3);margin-top:2px;}
+  .stat.accent .v{color:var(--brand);} .stat.warnv .v{color:var(--warn);}
+  .faccard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden;}
+  .faccard .fh{display:flex;align-items:center;gap:10px;padding:11px var(--s4);border-bottom:1px solid var(--line);background:var(--surface-2);}
+  .faccard .fh .fn{font-weight:600;} .faccard .fh .fs{font-size:12px;color:var(--ink-3);}
+  .faccard .fh .cnt{margin-left:auto;font-size:12px;color:var(--ink-2);}
+  .faccard .fb{padding:10px var(--s4);display:grid;gap:8px;}
+  .tline{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap;}
+  .tline .tid{font-family:var(--mono);font-weight:700;font-size:12.5px;color:var(--ink-2);min-width:54px;}
+  .tline .tm{color:var(--ink-2);}
+
   /* ===== landing ===== */
   .land{max-width:1080px;margin:0 auto;padding:var(--s7) var(--s5) var(--s6);}
   .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:var(--s6);align-items:center;padding:var(--s6) 0 var(--s7);}
@@ -523,6 +538,8 @@
           <div class="navlabel">Administration</div>
           <button class="navitem active" data-atab="students"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.9"/></svg>Students</button>
           <button class="navitem" data-atab="faculty"><svg viewBox="0 0 24 24"><path d="M12 3L2 8l10 5 10-5-10-5z"/><path d="M6 10v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></svg>Faculty</button>
+          <button class="navitem" data-atab="allocations"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>Allocations</button>
+          <button class="navitem" data-atab="hashkeys"><svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 11-7.1 7.1 5 5 0 017.1-7.1zm0 0L15 8m0 0l3 3m-3-3l3-3"/></svg>Hashkeys</button>
           <button class="navitem" data-atab="queries"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Queries <span id="admQBadge" class="badge" style="display:none">0</span></button>
         </aside>
         <div class="dashmain">
@@ -543,6 +560,24 @@
         <div id="atab-faculty" class="hidden">
           <div class="searchrow"><span class="mini" id="admFacCount"></span></div>
           <div class="scrollx"><table class="dtable"><thead><tr><th>Name</th><th>Email</th><th>School</th><th>Slots (used / max)</th><th>Remaining</th><th>Password</th></tr></thead><tbody id="admFacRows"></tbody></table></div>
+        </div>
+
+        <div id="atab-allocations" class="hidden">
+          <div class="statrow" id="admAllocStats"></div>
+          <div id="admAllocList" style="margin-top:16px"></div>
+        </div>
+
+        <div id="atab-hashkeys" class="hidden">
+          <div class="card" style="max-width:640px">
+            <div class="hd"><h3>Send hashkeys to a proctor</h3></div>
+            <div class="bd">
+              <p class="mini" style="margin:0 0 12px">Prepare the one-time hashkey sheet for a proctor to distribute. It can only go to a <b>VIT institutional email</b> (<span class="mono">…@vit.ac.in</span>) — personal ids are rejected.</p>
+              <div class="field" style="margin-bottom:10px"><label>Proctor email (must be @vit.ac.in)</label><input class="input mono" id="procEmail" placeholder="proctor.name@vit.ac.in"></div>
+              <div class="field" style="margin-bottom:12px"><label>Students</label><select class="sel" id="procBranch" style="width:100%"><option value="">All branches</option></select></div>
+              <button class="btn pri" id="procBtn">Prepare hashkey sheet</button>
+              <div id="procOut"></div>
+            </div>
+          </div>
         </div>
 
         <div id="atab-queries" class="hidden">
@@ -926,8 +961,10 @@ function loadFac(){api('/api/faculty/groups',{token:facTok}).then(function(r){
   document.getElementById('capBar').style.width=(max>0?Math.min(100,used/max*100):0)+'%';
   var ci=document.getElementById('facCapInput');if(ci&&document.activeElement!==ci)ci.value=max;
   var full=used>=max;
-  var qualify=r.body.groups.filter(function(g){return g.valid;}).length;
-  document.getElementById('facSummary').textContent=r.body.groups.length+' pending · '+qualify+' qualify';
+  var pending=r.body.groups.filter(function(g){return g.status!=='accepted';}).length;
+  var accepted=r.body.groups.filter(function(g){return g.status==='accepted';}).length;
+  var qualify=r.body.groups.filter(function(g){return g.valid&&g.status!=='accepted';}).length;
+  document.getElementById('facSummary').textContent=pending+' pending · '+qualify+' qualify'+(accepted?' · '+accepted+' accepted':'');
   var groups=r.body.groups.filter(function(g){return onlyPass?g.valid:true;});
   document.getElementById('facGroups').innerHTML=groups.map(function(g){
     var canAccept=g.valid&&g.status!=='accepted'&&!full;
@@ -958,13 +995,56 @@ document.getElementById('admSignin').onclick=function(){
 };
 document.querySelectorAll('#view-admin [data-atab]').forEach(function(t){t.onclick=function(){
   var v=t.getAttribute('data-atab');tabSwitch('view-admin','data-atab',v);
-  document.getElementById('atab-students').classList.toggle('hidden',v!=='students');
-  document.getElementById('atab-faculty').classList.toggle('hidden',v!=='faculty');
-  document.getElementById('atab-queries').classList.toggle('hidden',v!=='queries');
+  ['students','faculty','allocations','hashkeys','queries'].forEach(function(p){var el=document.getElementById('atab-'+p);if(el)el.classList.toggle('hidden',p!==v);});
   if(v==='queries')loadAdmQueries();
   if(v==='faculty')loadAdmFaculty();
   if(v==='students')loadAdmStudents();
+  if(v==='allocations')loadAdmAllocations();
+  if(v==='hashkeys')loadProctorBranches();
 };});
+function loadAdmAllocations(){api('/api/admin/allocations',{token:admTok}).then(function(r){
+  if(!r.ok)return;var s=r.body.stats;
+  document.getElementById('admAllocStats').innerHTML=
+    '<div class="stat accent"><div class="v">'+s.formed+'</div><div class="k">Groups formed</div></div>'+
+    '<div class="stat warnv"><div class="v">'+s.remaining+'</div><div class="k">Groups left to be formed</div></div>'+
+    '<div class="stat"><div class="v">'+s.maxTeams.toLocaleString()+'</div><div class="k">Total capacity (teams)</div></div>'+
+    '<div class="stat"><div class="v">'+s.ungrouped.toLocaleString()+'</div><div class="k">Students not yet in a team</div></div>';
+  var html=r.body.faculties.map(function(f){
+    return '<div class="faccard"><div class="fh"><span class="fn">'+esc(f.name)+'</span><span class="fs">'+esc(f.school||'')+'</span><span class="cnt">'+f.accepted+' accepted · '+f.teams.length+' total</span></div>'+
+      '<div class="fb">'+f.teams.map(function(t){
+        var pill=t.status==='accepted'?'<span class="pill accepted">accepted</span>':(t.status==='pending'?'<span class="pill pending">pending</span>':'<span class="pill rejected">'+esc(t.status)+'</span>');
+        return '<div class="tline"><span class="tid">'+esc(t.id)+'</span>'+pill+'<span class="tm">'+t.members.map(function(m){return esc(m.name)+(m.scope?' (SCOPE)':'');}).join(', ')+'</span></div>';
+      }).join('')+'</div></div>';
+  }).join('');
+  if(r.body.unassigned.length){
+    html+='<div class="faccard"><div class="fh"><span class="fn">No faculty chosen yet</span><span class="cnt">'+r.body.unassigned.length+' team'+(r.body.unassigned.length>1?'s':'')+'</span></div>'+
+      '<div class="fb">'+r.body.unassigned.map(function(t){return '<div class="tline"><span class="tid">'+esc(t.id)+'</span><span class="pill pending">forming</span><span class="tm">'+t.members.map(function(m){return esc(m.name);}).join(', ')+'</span></div>';}).join('')+'</div></div>';
+  }
+  document.getElementById('admAllocList').innerHTML=html||'<p class="muted">No teams formed yet.</p>';
+});}
+var procBranchesLoaded=false;
+function loadProctorBranches(){
+  if(procBranchesLoaded)return;
+  api('/api/admin/students?size=1',{token:admTok}).then(function(r){
+    if(!r.ok||!r.body.branches)return;procBranchesLoaded=true;
+    document.getElementById('procBranch').innerHTML='<option value="">All branches</option>'+r.body.branches.map(function(b){return '<option value="'+esc(b)+'">'+esc(b)+'</option>';}).join('');
+  });
+}
+document.getElementById('procBtn').onclick=function(){
+  var email=document.getElementById('procEmail').value.trim(),branch=document.getElementById('procBranch').value;
+  run(this,api('/api/admin/proctor-hashkeys',{method:'POST',token:admTok,body:{email:email,branch:branch}}).then(function(r){
+    var o=document.getElementById('procOut');
+    if(!r.ok){note(o,'bad',esc(r.body.error));return;}
+    // build a CSV the admin can send to the (validated) proctor address
+    var head=['Reg no','Name','Hashkey','Registered'];
+    var lines=[head].concat(r.body.rows.map(function(x){return [x.reg,x.name,x.hashkey,x.registered?'yes':'no'];}));
+    var csv=lines.map(function(row){return row.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\r\n');
+    var blob=new Blob([csv],{type:'text/csv'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='hashkeys-'+(r.body.branch||'all')+'.csv';document.body.appendChild(a);a.click();setTimeout(function(){a.remove();URL.revokeObjectURL(a.href);},100);
+    note(o,'ok','Prepared <b>'+r.body.count+'</b> hashkeys for <b>'+esc(r.body.email)+'</b> ('+esc(r.body.branch)+'). The sheet downloaded — send it to that proctor. <span class="mini">(Automated email delivery needs an SMTP integration; ask to enable it.)</span>');
+    toast('Hashkey sheet ready for '+r.body.email);
+  }));
+};
 function timeAgo(ts){var s=Math.floor((Date.now()-ts)/1000);if(s<60)return s+'s ago';var m=Math.floor(s/60);if(m<60)return m+'m ago';var h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 function loadAdmQueries(){api('/api/admin/queries',{token:admTok}).then(function(r){
   if(!r.ok)return;
@@ -1034,7 +1114,8 @@ document.getElementById('admResetAll').onclick=function(){
 };
 /* admin dynamic updates: keep faculty slots + query badge fresh while signed in */
 var admPoll=null;
-function startAdmPoll(){stopAdmPoll();admPoll=setInterval(function(){if(!admTok){stopAdmPoll();return;}loadAdmFaculty();loadAdmQueries();},8000);}
+function startAdmPoll(){stopAdmPoll();admPoll=setInterval(function(){if(!admTok){stopAdmPoll();return;}loadAdmFaculty();loadAdmQueries();
+  if(!document.getElementById('atab-allocations').classList.contains('hidden'))loadAdmAllocations();},8000);}
 function stopAdmPoll(){if(admPoll){clearInterval(admPoll);admPoll=null;}}
 
 /* password show/hide eye toggle on every password field */
