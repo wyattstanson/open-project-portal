@@ -1,107 +1,146 @@
-# Deploying the portal
+# Deployment notes
 
-The portal is a **stateful** Node service: it holds an encryption key and a data
-file. That changes where it should run.
+The portal ships as a **Docker Compose stack**: `nginx` (reverse proxy, :80) →
+`portal` (Node app) → `postgres` (durable store). One command brings it all up.
 
-- The earlier team-builder tool is a static page and is fine on Vercel.
-- **This portal is not a good fit for Vercel.** Vercel functions are stateless
-  and their filesystem is wiped between invocations, so `data/db.json` and the
-  vault key would not survive, and sessions would drop. Use a host that runs a
-  long-lived container or process: **Render, Railway, Fly.io, or any VPS.**
+> **Run ONE portal instance.** The app holds its working set in memory and writes
+> through to the store, so multiple instances would serve stale data even against a
+> shared Postgres. Postgres gives durability, not horizontal scale (yet).
 
-## Before you deploy: set a stable key
+---
 
-Emails are encrypted with `VAULT_KEY`. If it is missing the app generates one and
-writes it to `portal/data/.vault_key`, which is fine locally but not on a host
-with an ephemeral disk. Generate one and set it as an environment variable:
+## 0. Prerequisites on the target server
 
+- Linux with **Docker** + the **compose plugin**, daemon running:
+  ```bash
+  docker --version && docker compose version
+  ```
+  If Docker is missing:
+  ```bash
+  curl -fsSL https://get.docker.com | sh
+  sudo usermod -aG docker "$USER"   # log out/in so `docker` works without sudo
+  ```
+- ~**1–2 GB free RAM** (Postgres + seeding 10k scrypt-hashed rows).
+- Port **80** reachable (open the firewall / security group).
+
+---
+
+## 1. Configure (optional for a demo)
+
+```bash
+cp .env.example .env
+nano .env                 # set POSTGRES_PASSWORD, and VAULT_KEY for real data
 ```
+
+Every key has a safe default (see `.env.example`), so a demo runs with no `.env`.
+For **real student data**, set a stable `VAULT_KEY` (never change it afterwards):
+
+```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Set that value as `VAULT_KEY` in your host's dashboard. Keep it secret and never
-change it, or existing encrypted emails become unreadable.
+---
 
-## Option A: Docker (works on Render, Fly, Railway, a VPS)
+## 2. Deploy to a server at an IP
 
-From the project root (`vit-open-project`):
+From your machine, copy the project up (excludes `node_modules`, `.git`, local db):
 
-```
-docker build -t open-project-portal .
-docker run -p 4000:4000 -e VAULT_KEY=<your-64-hex-key> \
-  -v "$PWD/portal/data:/app/portal/data" open-project-portal
-```
-
-The `-v` mount keeps `db.json` on the host so data persists across restarts.
-
-## Option B: Render (no Docker needed)
-
-1. Push this folder to a Git repo.
-2. New Web Service on Render, point it at the repo.
-3. Build command: none. Start command: `node portal/portal-server.js`.
-4. Add environment variable `VAULT_KEY`.
-5. Add a persistent disk mounted at `/app/portal/data` so data survives deploys.
-
-## Option C: Railway / Fly.io
-
-Both detect the `Procfile` (`web: node portal/portal-server.js`). Add `VAULT_KEY`
-as a variable and attach a small volume at `portal/data`.
-
-## Option D: VIT's own server (recommended for the real test)
-
-Any Linux box with Docker, or with Node 18+, runs this. On the server:
-
-```
-git clone <your repo>
-cd vit-open-project
-docker compose up -d --build      # serves on :4000
+```bash
+rsync -az --delete \
+  --exclude node_modules --exclude .git --exclude 'portal/data/portal.db*' \
+  ./  USER@SERVER_IP:/opt/open-project-portal/
 ```
 
-Then point nginx/Apache at `http://127.0.0.1:4000` for TLS and a domain. No
-Node/npm knowledge needed on the box beyond Docker. Without Docker:
-`UV_THREADPOOL_SIZE=64 node portal/portal-server.js`.
+Then on the server, build and start the stack:
 
-## Running it for 5,000 concurrent students
-
-What the code already does for scale:
-- **Password hashing is async** (scrypt on the libuv thread pool), so a login
-  rush never freezes the server. 100 simultaneous logins finish in well under a
-  second; the event loop stays free for everyone else.
-- **UV_THREADPOOL_SIZE=64** so 64 hashes run at once instead of 4.
-- **Slot allocation is atomic** in the single Node process (check-and-set with no
-  await between), so two students can never grab the same last faculty slot.
-- **Writes are coalesced and atomic** (temp-file + rename), off the request path.
-
-Sizing: a single instance with **2-4 vCPU and 2-4 GB RAM** comfortably serves a
-few thousand students whose traffic is mostly reads plus occasional writes (which
-is exactly this workload). Render's FREE tier (0.1 shared CPU) will NOT do it —
-use a paid instance or a real VM/VIT server.
-
-## The honest next step for true production scale + a proper DBMS
-
-This build keeps all state in memory with a JSON snapshot on disk. That is fast
-and simple, but it is **single-instance**: you cannot run several copies behind a
-load balancer, because each copy would have its own state. For horizontal scale
-and durability you move the store to **PostgreSQL**:
-
-1. Tables: `students`, `faculty`, `groups`, `group_members`, `consents`,
-   `queries`, `admin`. The team-formation/constraint logic in `engine.js` stays
-   unchanged (it is pure JS over rows).
-2. Replace the `db.*` in-memory reads/writes in `portal-server.js` with SQL. The
-   endpoints and their shapes do not change, only the data layer beneath them.
-3. Run N stateless instances behind nginx; Postgres handles concurrency and the
-   atomic slot check becomes a single `UPDATE ... WHERE slots_used < capacity`.
-
-That migration is a focused, self-contained piece of work. Connect a Postgres
-instance (VIT's, or a managed one) and it can be done next.
-
-## Loading your real roster
-
-Put your CSV (`reg,name,email`) anywhere and run:
-
-```
-node portal/dataset.js path/to/your-students.csv
+```bash
+ssh USER@SERVER_IP
+cd /opt/open-project-portal
+docker compose up -d --build
 ```
 
-That rewrites `portal/data/db.json` with your students, every email encrypted,
-and re-sorts them into valid pending groups. Redeploy (or restart) to serve it.
+First boot takes a minute: Postgres initialises and the app seeds ~10k students.
+
+---
+
+## 3. Verify
+
+```bash
+docker compose ps                         # all three services "running"/"healthy"
+curl -s http://localhost/api/health        # {"ok":true,"students":10000,...}
+docker compose logs -f portal              # watch the app; Ctrl-C to stop tailing
+```
+
+Open **`http://SERVER_IP/`** in a browser. Demo logins:
+- **admin** — `admin` / `admin@123`
+- **faculty** — `teacher@domain` / `teach123`
+- **student** — reg `24BCE2312`, first-time hashkey shown on the landing page.
+
+---
+
+## 4. If Postgres misbehaves — fall back to SQLite (tested path)
+
+The SQLite path is fully tested. To use it, drop `DATABASE_URL` from the `portal`
+service in `docker-compose.yml` (comment out that one line) and:
+
+```bash
+docker compose up -d --build portal
+```
+
+The app then stores data in a single SQLite file inside the container.
+
+---
+
+## 5. Everyday operations
+
+```bash
+docker compose logs -f portal        # app logs
+docker compose logs -f db            # postgres logs
+docker compose restart portal        # restart just the app
+docker compose down                  # stop the stack (keeps the pgdata volume)
+docker compose down -v               # stop AND wipe the database (fresh start)
+```
+
+**Redeploy after a code change:** re-run the `rsync` from step 2, then
+`docker compose up -d --build`.
+
+**Back up the database:**
+```bash
+docker compose exec db pg_dump -U portal portal > backup-$(date +%F).sql
+```
+
+---
+
+## 6. Loading your real roster
+
+Replace the synthetic seed with your CSV (`reg,name,email`):
+
+```bash
+node portal/dataset.js path/to/your-students.csv    # rewrites portal/data/db.json
+docker compose down -v && docker compose up -d --build   # reseed from the new data
+```
+
+Set a real `VAULT_KEY` in `.env` first, so emails are encrypted under your own key.
+
+---
+
+## 7. TLS / a domain (production)
+
+Point your domain's A record at the server, then terminate TLS in `nginx.conf`
+(add a `listen 443 ssl;` server block with your certificate and redirect 80→443).
+The simplest route is to run Certbot/Caddy in front, or add a certbot companion
+container. Until then the stack serves plain HTTP on port 80.
+
+---
+
+## Environment keys (all read by docker compose)
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `portal` | Postgres credentials; `DATABASE_URL` is assembled from these |
+| `UV_THREADPOOL_SIZE` | `64` | Parallel scrypt password hashing |
+| `WORKERS` | `1` | Node workers — **keep at 1** |
+| `PG_POOL` | `10` | Postgres connection-pool size |
+| `PROCTOR_EMAIL_DOMAIN` | `vit.ac.in` | Hashkeys may only be sent to this email domain |
+| `HTTP_PORT` | `80` | Host port nginx publishes on |
+| `VAULT_KEY` | *(empty → demo key)* | AES-256 key for email encryption; set for real data |
