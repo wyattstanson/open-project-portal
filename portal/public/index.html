@@ -264,7 +264,8 @@
   .hero .cta{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap;}
   .heroart{background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow-2);padding:var(--s5);}
   .heroart .bars{display:flex;align-items:flex-end;gap:10px;height:120px;margin-top:12px;}
-  .heroart .bars span{flex:1;background:var(--brand);border-radius:2px 2px 0 0;opacity:.85;}
+  .heroart .bars span{flex:1;background:var(--brand);border-radius:2px 2px 0 0;opacity:.85;transition:height .5s ease,background .3s;}
+  .heroart .bars span.off{background:var(--line);opacity:1;}
   /* the "cooler" faculty entry button (user is faculty) */
   .btn.facultycool{position:relative;border:none;color:#fff;background:linear-gradient(135deg,var(--brand),#ff8f63);
     box-shadow:0 6px 18px -6px var(--brand);font-weight:600;overflow:hidden;}
@@ -353,16 +354,11 @@
           <div class="eyebrow">Institute Open Projects</div>
           <h1>Form your project team, get it approved.</h1>
           <p class="lead">A single place for students to build a five-member team under the school rules, pick a faculty by branch, and track approval, and for faculty and admins to review and manage it all. Fast, private, and built to run for the whole batch at once.</p>
-          <div class="cta">
-            <button class="btn hero facultycool" data-go="faculty">I'm faculty<span class="arw">&rarr;</span></button>
-            <button class="btn pri hero" data-go="student">I'm a student</button>
-            <button class="btn hero" data-go="admin">Administrator</button>
-          </div>
         </div>
         <div class="heroart">
-          <div class="mini" style="font-weight:600;color:var(--ink-2)">Allocation overview</div>
-          <div class="bars"><span style="height:45%"></span><span style="height:70%"></span><span style="height:55%"></span><span style="height:88%"></span><span style="height:62%"></span><span style="height:78%"></span><span style="height:50%"></span></div>
-          <div class="row" style="justify-content:space-between;margin-top:12px;font-size:12px;color:var(--ink-3)"><span>10,000 students</span><span>160 faculty</span><span>2 SCOPE + 3 schools</span></div>
+          <div class="spread"><div class="mini" style="font-weight:600;color:var(--ink-2)">Allocation overview</div><span class="mini" id="heroLive" style="color:var(--ink-3)">live</span></div>
+          <div class="bars" id="heroBars"></div>
+          <div class="row" style="justify-content:space-between;margin-top:12px;font-size:12px;color:var(--ink-3)"><span id="heroStudents">— students</span><span id="heroFaculty">— faculty</span><span id="heroTeams">— teams formed</span></div>
         </div>
       </div>
       <h2 style="font-size:15px;font-weight:600;color:var(--ink-2);margin-bottom:4px">Sign in</h2>
@@ -711,7 +707,7 @@ function setUser(name){
 var VIEWS=['landing','student','faculty','admin'];
 function applyView(v){if(VIEWS.indexOf(v)<0)v='landing';
   VIEWS.forEach(function(x){document.getElementById('view-'+x).classList.toggle('hidden',x!==v);});
-  if(v==='landing')setUser(null);
+  if(v==='landing'){setUser(null);loadHeroStats();}
   if(v==='student'&&stTok){loadMyGroups();loadStudentFacDir();}
   window.scrollTo(0,0);
 }
@@ -1377,6 +1373,29 @@ onEnter(['stReg','stPass'],'stLoginBtn');
 onEnter(['facEmail','facPass'],'facSignin');
 onEnter(['admUser','admPass'],'admSignin');
 onEnter(['regPass','regPass2'],'regBtn');
+
+/* live "Allocation overview" on the landing — real counts + bars that fill as
+   teams get formed. Refetched whenever the landing is shown, and polled while it's up. */
+function loadHeroStats(){
+  return api('/api/stats').then(function(r){
+    if(!r.ok)return;var s=r.body;
+    var st=document.getElementById('heroStudents'),fc=document.getElementById('heroFaculty'),tm=document.getElementById('heroTeams');
+    if(st)st.textContent=s.students.toLocaleString()+' student'+(s.students===1?'':'s');
+    if(fc)fc.textContent=s.faculty.toLocaleString()+' faculty';
+    if(tm)tm.textContent=s.formed.toLocaleString()+' team'+(s.formed===1?'':'s')+' formed';
+    var bars=document.getElementById('heroBars');if(!bars)return;
+    var N=7, cap=Math.max(1,s.maxTeams), bucket=cap/N, html='';
+    for(var i=0;i<N;i++){
+      var fill=Math.max(0,Math.min(1,(s.formed-i*bucket)/bucket));   // this bar's share of progress
+      var h=Math.round(16+fill*82);                                  // 16%..98%
+      html+='<span class="'+(fill<=0?'off':'')+'" style="height:'+(fill<=0?(14+i*2):h)+'%"></span>';
+    }
+    bars.innerHTML=html;
+    var live=document.getElementById('heroLive');
+    if(live)live.textContent=s.maxTeams?(Math.round(s.formed/s.maxTeams*100)+'% allocated'):'live';
+  });
+}
+setInterval(function(){ if(!document.getElementById('view-landing').classList.contains('hidden'))loadHeroStats(); },15000);
 
 /* show the demo student's first-time hashkey on the landing */
 api('/api/registration-demo').then(function(r){var el=document.getElementById('demoHashkey');if(el)el.textContent=(r.body&&r.body.registered)?'(registered — reset via admin)':((r.body&&r.body.hashkey)||'—');});

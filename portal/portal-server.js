@@ -467,6 +467,19 @@ async function handle(req, res) {
 
   if (p === '/api/health') return sendJSON(res, 200, { ok: true, students: Object.keys(db.students).length, groups: db.groups.length, pid: process.pid });
 
+  // ---- PUBLIC: live headline stats for the landing "Allocation overview" ----
+  if (p === '/api/stats' && req.method === 'GET') {
+    const students = studentArr.length;
+    const faculty = db.faculty.length;
+    const formed = db.groups.filter((g) => g.status !== 'rejected').length;
+    const accepted = db.groups.filter((g) => g.status === 'accepted').length;
+    const scopeCount = studentArr.filter((s) => s.scope).length;
+    const otherCount = students - scopeCount;
+    const maxTeams = Math.min(Math.floor(scopeCount / 2), Math.floor(otherCount / 3));
+    const grouped = groupedRegSet().size;
+    return sendJSON(res, 200, { students, faculty, formed, accepted, maxTeams, grouped });
+  }
+
   // ---- FACULTY login ----
   if (p === '/api/faculty/login' && req.method === 'POST') {
     const { email, password } = await readBody(req);
