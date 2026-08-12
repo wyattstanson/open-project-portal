@@ -36,8 +36,12 @@ function init(seeder) {
       emailHash TEXT, passwordHash TEXT, changedPassword INTEGER, passwordResetNotice INTEGER);
     CREATE INDEX IF NOT EXISTS idx_students_emailhash ON students(emailHash);
     CREATE TABLE IF NOT EXISTS faculty(
-      email TEXT PRIMARY KEY, name TEXT, school TEXT, capacity INTEGER, passHash TEXT, fidx INTEGER);
+      email TEXT PRIMARY KEY, name TEXT, school TEXT, capacity INTEGER, passHash TEXT, fidx INTEGER, cabin TEXT);
     CREATE TABLE IF NOT EXISTS admin(username TEXT PRIMARY KEY, passHash TEXT);
+    CREATE TABLE IF NOT EXISTS messages(
+      id TEXT PRIMARY KEY, thread TEXT, reg TEXT, facEmail TEXT, fromRole TEXT, body TEXT, createdAt INTEGER,
+      readByStudent INTEGER, readByFaculty INTEGER);
+    CREATE INDEX IF NOT EXISTS idx_msg_thread ON messages(thread, createdAt);
     CREATE TABLE IF NOT EXISTS teams(
       id TEXT PRIMARY KEY, status TEXT, faculty TEXT, requestedFaculty TEXT, submittedBy TEXT, createdAt INTEGER);
     CREATE TABLE IF NOT EXISTS team_members(
@@ -51,27 +55,31 @@ function init(seeder) {
   // migration: team-formation timestamps (added M5) — when a faculty was requested / approved.
   try { db.exec('ALTER TABLE teams ADD COLUMN requestedAt INTEGER'); } catch (e) {}
   try { db.exec('ALTER TABLE teams ADD COLUMN approvedAt INTEGER'); } catch (e) {}
+  // migration: faculty cabin number (read from the admin's Excel upload).
+  try { db.exec('ALTER TABLE faculty ADD COLUMN cabin TEXT'); } catch (e) {}
   const n = db.prepare('SELECT COUNT(*) AS c FROM students').get().c;
   if (n === 0 && seeder) importAll(seeder());
 }
 
 function importAll(data) {
   const insStu = db.prepare('INSERT OR REPLACE INTO students(reg,name,school,scope,email,emailHash,passwordHash,changedPassword,passwordResetNotice) VALUES(?,?,?,?,?,?,?,?,?)');
-  const insFac = db.prepare('INSERT OR REPLACE INTO faculty(email,name,school,capacity,passHash,fidx) VALUES(?,?,?,?,?,?)');
+  const insFac = db.prepare('INSERT OR REPLACE INTO faculty(email,name,school,capacity,passHash,fidx,cabin) VALUES(?,?,?,?,?,?,?)');
   const insGrp = db.prepare('INSERT OR REPLACE INTO teams(id,status,faculty,requestedFaculty,submittedBy,createdAt,requestedAt,approvedAt) VALUES(?,?,?,?,?,?,?,?)');
   const insMem = db.prepare('INSERT OR REPLACE INTO team_members(groupId,reg,ord,consent) VALUES(?,?,?,?)');
   const insQ = db.prepare('INSERT OR REPLACE INTO queries(id,reg,name,topic,message,status,createdAt) VALUES(?,?,?,?,?,?,?)');
+  const insM = db.prepare('INSERT OR REPLACE INTO messages(id,thread,reg,facEmail,fromRole,body,createdAt,readByStudent,readByFaculty) VALUES(?,?,?,?,?,?,?,?,?)');
   db.exec('BEGIN');
   try {
     for (const reg in data.students) { const s = data.students[reg];
       insStu.run(reg, s.name, s.school, s.scope ? 1 : 0, s.email || null, s.emailHash || null, s.passwordHash || null, s.changedPassword ? 1 : 0, s.passwordResetNotice ? 1 : 0); }
-    (data.faculty || []).forEach((f, i) => insFac.run(f.email, f.name, f.school || null, f.capacity, f.passHash, i));
+    (data.faculty || []).forEach((f, i) => insFac.run(f.email, f.name, f.school || null, f.capacity, f.passHash, i, f.cabin || null));
     if (data.admin) db.prepare('INSERT OR REPLACE INTO admin(username,passHash) VALUES(?,?)').run(data.admin.username, data.admin.passHash);
     (data.groups || []).forEach((g) => {
       insGrp.run(g.id, g.status, g.faculty || null, g.requestedFaculty || null, g.submittedBy || null, g.createdAt || Date.now(), g.requestedAt || null, g.approvedAt || null);
       g.members.forEach((reg, ord) => insMem.run(g.id, reg, ord, (g.consent && g.consent[reg]) || 'accepted'));
     });
     (data.queries || []).forEach((q) => insQ.run(q.id, q.reg, q.name, q.topic, q.message, q.status, q.createdAt));
+    (data.messages || []).forEach((m) => insM.run(m.id, m.thread, m.reg, m.facEmail, m.fromRole, m.body, m.createdAt, m.readByStudent ? 1 : 0, m.readByFaculty ? 1 : 0));
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
@@ -84,7 +92,7 @@ function loadAll() {
       emailHash: r.emailHash, passwordHash: r.passwordHash, changedPassword: !!r.changedPassword, passwordResetNotice: !!r.passwordResetNotice, pwFp: r.pwFp || null };
   }
   const faculty = db.prepare('SELECT * FROM faculty ORDER BY fidx').all()
-    .map((r) => ({ email: r.email, name: r.name, school: r.school, capacity: r.capacity, passHash: r.passHash }));
+    .map((r) => ({ email: r.email, name: r.name, school: r.school, capacity: r.capacity, passHash: r.passHash, cabin: r.cabin || null }));
   const adminRow = db.prepare('SELECT * FROM admin LIMIT 1').get();
   const admin = adminRow ? { username: adminRow.username, passHash: adminRow.passHash } : null;
   const memByGroup = {};
@@ -98,7 +106,10 @@ function loadAll() {
   });
   const queries = db.prepare('SELECT * FROM queries').all()
     .map((r) => ({ id: r.id, reg: r.reg, name: r.name, topic: r.topic, message: r.message, status: r.status, createdAt: r.createdAt }));
-  return { students, faculty, admin, groups, queries };
+  const messages = db.prepare('SELECT * FROM messages ORDER BY createdAt').all()
+    .map((r) => ({ id: r.id, thread: r.thread, reg: r.reg, facEmail: r.facEmail, fromRole: r.fromRole, body: r.body,
+      createdAt: r.createdAt, readByStudent: !!r.readByStudent, readByFaculty: !!r.readByFaculty }));
+  return { students, faculty, admin, groups, queries, messages };
 }
 
 // ---- targeted, durable writes (called alongside the in-memory mutation) ----
@@ -128,6 +139,36 @@ function saveQuery(q) {
 }
 function saveQueryStatus(id, status) { db.prepare('UPDATE queries SET status=? WHERE id=?').run(status, id); }
 function saveFacultyCapacity(email, capacity) { db.prepare('UPDATE faculty SET capacity=? WHERE email=?').run(capacity, email); }
+function saveMessage(m) {
+  db.prepare('INSERT OR REPLACE INTO messages(id,thread,reg,facEmail,fromRole,body,createdAt,readByStudent,readByFaculty) VALUES(?,?,?,?,?,?,?,?,?)')
+    .run(m.id, m.thread, m.reg, m.facEmail, m.fromRole, m.body, m.createdAt, m.readByStudent ? 1 : 0, m.readByFaculty ? 1 : 0);
+}
+function markThreadRead(thread, role) {
+  const col = role === 'faculty' ? 'readByFaculty' : 'readByStudent';
+  db.prepare('UPDATE messages SET ' + col + '=1 WHERE thread=?').run(thread);
+}
+// Replace the whole student roster (admin Excel upload). Preserves the teams that
+// reference these regs — only the students table is rewritten.
+function replaceStudents(students) {
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM students');
+    const ins = db.prepare('INSERT OR REPLACE INTO students(reg,name,school,scope,email,emailHash,passwordHash,changedPassword,passwordResetNotice,pwFp) VALUES(?,?,?,?,?,?,?,?,?,?)');
+    for (const reg in students) { const s = students[reg];
+      ins.run(reg, s.name, s.school, s.scope ? 1 : 0, s.email || null, s.emailHash || null, s.passwordHash || null, s.changedPassword ? 1 : 0, s.passwordResetNotice ? 1 : 0, s.pwFp || null); }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+// Replace the whole faculty list (admin Excel upload). Keeps fidx = array order.
+function replaceFaculty(faculty) {
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM faculty');
+    const ins = db.prepare('INSERT OR REPLACE INTO faculty(email,name,school,capacity,passHash,fidx,cabin) VALUES(?,?,?,?,?,?,?)');
+    faculty.forEach((f, i) => ins.run(f.email, f.name, f.school || null, f.capacity, f.passHash, i, f.cabin || null));
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+}
 // wipe every team + membership (admin "reset all allocations"); students/faculty/admin stay
 function deleteAllGroups() {
   db.exec('BEGIN');
@@ -135,4 +176,4 @@ function deleteAllGroups() {
   catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
-module.exports = { driver: 'sqlite', init, loadAll, saveStudent, saveGroup, deleteGroup, saveQuery, saveQueryStatus, saveFacultyCapacity, deleteAllGroups };
+module.exports = { driver: 'sqlite', init, loadAll, saveStudent, saveGroup, deleteGroup, saveQuery, saveQueryStatus, saveFacultyCapacity, deleteAllGroups, saveMessage, markThreadRead, replaceStudents, replaceFaculty };

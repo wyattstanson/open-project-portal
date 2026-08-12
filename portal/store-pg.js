@@ -38,8 +38,13 @@ async function init(seeder) {
       "emailHash" TEXT, "passwordHash" TEXT, "changedPassword" INTEGER, "passwordResetNotice" INTEGER, "pwFp" TEXT);
     CREATE INDEX IF NOT EXISTS idx_students_emailhash ON students("emailHash");
     CREATE TABLE IF NOT EXISTS faculty(
-      email TEXT PRIMARY KEY, name TEXT, school TEXT, capacity INTEGER, "passHash" TEXT, fidx INTEGER);
+      email TEXT PRIMARY KEY, name TEXT, school TEXT, capacity INTEGER, "passHash" TEXT, fidx INTEGER, cabin TEXT);
+    ALTER TABLE faculty ADD COLUMN IF NOT EXISTS cabin TEXT;
     CREATE TABLE IF NOT EXISTS admin(username TEXT PRIMARY KEY, "passHash" TEXT);
+    CREATE TABLE IF NOT EXISTS messages(
+      id TEXT PRIMARY KEY, thread TEXT, reg TEXT, "facEmail" TEXT, "fromRole" TEXT, body TEXT,
+      "createdAt" BIGINT, "readByStudent" INTEGER, "readByFaculty" INTEGER);
+    CREATE INDEX IF NOT EXISTS idx_msg_thread ON messages(thread, "createdAt");
     CREATE TABLE IF NOT EXISTS teams(
       id TEXT PRIMARY KEY, status TEXT, faculty TEXT, "requestedFaculty" TEXT, "submittedBy" TEXT,
       "createdAt" BIGINT, "requestedAt" BIGINT, "approvedAt" BIGINT);
@@ -81,8 +86,8 @@ async function importAll(data) {
     });
     await bulkInsert(client, 'students',
       ['reg', 'name', 'school', 'scope', 'email', 'emailHash', 'passwordHash', 'changedPassword', 'passwordResetNotice', 'pwFp'], stu, 'reg');
-    const fac = (data.faculty || []).map((f, i) => [f.email, f.name, f.school || null, f.capacity, f.passHash, i]);
-    await bulkInsert(client, 'faculty', ['email', 'name', 'school', 'capacity', 'passHash', 'fidx'], fac, 'email');
+    const fac = (data.faculty || []).map((f, i) => [f.email, f.name, f.school || null, f.capacity, f.passHash, i, f.cabin || null]);
+    await bulkInsert(client, 'faculty', ['email', 'name', 'school', 'capacity', 'passHash', 'fidx', 'cabin'], fac, 'email');
     if (data.admin) await client.query('INSERT INTO admin(username,"passHash") VALUES($1,$2) ON CONFLICT(username) DO NOTHING', [data.admin.username, data.admin.passHash]);
     const teams = [], mems = [];
     (data.groups || []).forEach((g) => {
@@ -93,6 +98,8 @@ async function importAll(data) {
     await bulkInsert(client, 'team_members', ['groupId', 'reg', 'ord', 'consent'], mems, '"groupId", reg');
     const qs = (data.queries || []).map((q) => [q.id, q.reg, q.name, q.topic, q.message, q.status, q.createdAt]);
     await bulkInsert(client, 'queries', ['id', 'reg', 'name', 'topic', 'message', 'status', 'createdAt'], qs, 'id');
+    const msgs = (data.messages || []).map((m) => [m.id, m.thread, m.reg, m.facEmail, m.fromRole, m.body, m.createdAt, m.readByStudent ? 1 : 0, m.readByFaculty ? 1 : 0]);
+    await bulkInsert(client, 'messages', ['id', 'thread', 'reg', 'facEmail', 'fromRole', 'body', 'createdAt', 'readByStudent', 'readByFaculty'], msgs, 'id');
     await client.query('COMMIT');
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 }
@@ -104,7 +111,7 @@ async function loadAll() {
       emailHash: r.emailHash, passwordHash: r.passwordHash, changedPassword: !!r.changedPassword, passwordResetNotice: !!r.passwordResetNotice, pwFp: r.pwFp || null };
   }
   const faculty = (await pool.query('SELECT * FROM faculty ORDER BY fidx')).rows
-    .map((r) => ({ email: r.email, name: r.name, school: r.school, capacity: r.capacity, passHash: r.passHash }));
+    .map((r) => ({ email: r.email, name: r.name, school: r.school, capacity: r.capacity, passHash: r.passHash, cabin: r.cabin || null }));
   const adminRow = (await pool.query('SELECT * FROM admin LIMIT 1')).rows[0];
   const admin = adminRow ? { username: adminRow.username, passHash: adminRow.passHash } : null;
   const memByGroup = {};
@@ -118,7 +125,10 @@ async function loadAll() {
   });
   const queries = (await pool.query('SELECT * FROM queries')).rows
     .map((r) => ({ id: r.id, reg: r.reg, name: r.name, topic: r.topic, message: r.message, status: r.status, createdAt: r.createdAt }));
-  return { students, faculty, admin, groups, queries };
+  const messages = (await pool.query('SELECT * FROM messages ORDER BY "createdAt"')).rows
+    .map((r) => ({ id: r.id, thread: r.thread, reg: r.reg, facEmail: r.facEmail, fromRole: r.fromRole, body: r.body,
+      createdAt: r.createdAt, readByStudent: !!r.readByStudent, readByFaculty: !!r.readByFaculty }));
+  return { students, faculty, admin, groups, queries, messages };
 }
 
 // ---- targeted, durable writes (enqueued; called alongside the in-memory mutation) ----
@@ -166,6 +176,41 @@ function saveQuery(q) {
 }
 function saveQueryStatus(id, status) { return enqueue(() => pool.query('UPDATE queries SET status=$1 WHERE id=$2', [status, id])); }
 function saveFacultyCapacity(email, capacity) { return enqueue(() => pool.query('UPDATE faculty SET capacity=$1 WHERE email=$2', [capacity, email])); }
+function saveMessage(m) {
+  return enqueue(() => pool.query(
+    'INSERT INTO messages(id,thread,reg,"facEmail","fromRole",body,"createdAt","readByStudent","readByFaculty") VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)' +
+    ' ON CONFLICT(id) DO UPDATE SET "readByStudent"=EXCLUDED."readByStudent","readByFaculty"=EXCLUDED."readByFaculty"',
+    [m.id, m.thread, m.reg, m.facEmail, m.fromRole, m.body, m.createdAt, m.readByStudent ? 1 : 0, m.readByFaculty ? 1 : 0]));
+}
+function markThreadRead(thread, role) {
+  const col = role === 'faculty' ? 'readByFaculty' : 'readByStudent';
+  return enqueue(() => pool.query('UPDATE messages SET "' + col + '"=1 WHERE thread=$1', [thread]));
+}
+function replaceStudents(students) {
+  return enqueue(async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM students');
+      const rows = Object.keys(students).map((reg) => { const s = students[reg];
+        return [reg, s.name, s.school, s.scope ? 1 : 0, s.email || null, s.emailHash || null, s.passwordHash || null, s.changedPassword ? 1 : 0, s.passwordResetNotice ? 1 : 0, s.pwFp || null]; });
+      await bulkInsert(client, 'students', ['reg', 'name', 'school', 'scope', 'email', 'emailHash', 'passwordHash', 'changedPassword', 'passwordResetNotice', 'pwFp'], rows, 'reg');
+      await client.query('COMMIT');
+    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  });
+}
+function replaceFaculty(faculty) {
+  return enqueue(async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM faculty');
+      const rows = faculty.map((f, i) => [f.email, f.name, f.school || null, f.capacity, f.passHash, i, f.cabin || null]);
+      await bulkInsert(client, 'faculty', ['email', 'name', 'school', 'capacity', 'passHash', 'fidx', 'cabin'], rows, 'email');
+      await client.query('COMMIT');
+    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  });
+}
 function deleteAllGroups() {
   return enqueue(async () => {
     const client = await pool.connect();
@@ -178,4 +223,4 @@ function deleteAllGroups() {
   });
 }
 
-module.exports = { driver: 'postgres', init, loadAll, saveStudent, saveGroup, deleteGroup, saveQuery, saveQueryStatus, saveFacultyCapacity, deleteAllGroups };
+module.exports = { driver: 'postgres', init, loadAll, saveStudent, saveGroup, deleteGroup, saveQuery, saveQueryStatus, saveFacultyCapacity, deleteAllGroups, saveMessage, markThreadRead, replaceStudents, replaceFaculty };

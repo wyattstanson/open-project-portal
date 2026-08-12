@@ -265,6 +265,45 @@
   .heroart{background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow-2);padding:var(--s5);}
   .heroart .bars{display:flex;align-items:flex-end;gap:10px;height:120px;margin-top:12px;}
   .heroart .bars span{flex:1;background:var(--brand);border-radius:2px 2px 0 0;opacity:.85;}
+  /* the "cooler" faculty entry button (user is faculty) */
+  .btn.facultycool{position:relative;border:none;color:#fff;background:linear-gradient(135deg,var(--brand),#ff8f63);
+    box-shadow:0 6px 18px -6px var(--brand);font-weight:600;overflow:hidden;}
+  .btn.facultycool:hover{transform:translateY(-2px);box-shadow:0 12px 28px -8px var(--brand);}
+  .btn.facultycool .arw{display:inline-block;transition:transform .2s;margin-left:5px;}
+  .btn.facultycool:hover .arw{transform:translateX(4px);}
+  .btn.facultycool::after{content:"";position:absolute;inset:0;background:linear-gradient(120deg,transparent 30%,rgba(255,255,255,.4) 50%,transparent 70%);
+    transform:translateX(-120%);transition:transform .65s;}
+  .btn.facultycool:hover::after{transform:translateX(120%);}
+  /* ===== chat / messages ===== */
+  .chatlayout{display:grid;grid-template-columns:262px 1fr;gap:14px;}
+  @media(max-width:720px){.chatlayout{grid-template-columns:1fr;}}
+  .threadlist{border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:540px;background:var(--surface);}
+  .threadlist .t{display:block;width:100%;text-align:left;border:none;background:none;padding:11px 13px;border-bottom:1px solid var(--line);cursor:pointer;}
+  .threadlist .t:hover{background:var(--surface-2);}
+  .threadlist .t.active{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--brand);}
+  .threadlist .t .nm{font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:6px;}
+  .threadlist .t .pv{font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+  .unreaddot{background:var(--brand);color:#fff;border-radius:10px;font-size:10.5px;line-height:16px;min-width:16px;text-align:center;padding:0 5px;margin-left:auto;font-weight:600;}
+  .chatpane{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;background:var(--surface);min-height:460px;}
+  .chatpane .ch{padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:8px;max-height:430px;}
+  .bubble{max-width:76%;padding:8px 12px;border-radius:13px;font-size:13.5px;line-height:1.42;word-wrap:break-word;white-space:pre-wrap;}
+  .bubble .ts{display:block;font-size:10px;opacity:.6;margin-top:3px;}
+  .bubble.them{align-self:flex-start;background:var(--surface-2);border:1px solid var(--line);border-bottom-left-radius:3px;}
+  .bubble.me{align-self:flex-end;background:var(--brand);color:#fff;border-bottom-right-radius:3px;}
+  .composer{display:flex;gap:8px;padding:11px;border-top:1px solid var(--line);}
+  .composer .input{flex:1;}
+  .chatempty{margin:auto;color:var(--ink-3);font-size:13px;text-align:center;padding:34px 20px;}
+  .cabinchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:20px;padding:3px 11px;font-size:12.5px;color:var(--ink-2);}
+  .cabinchip b{color:var(--ink);}
+  .cabinchip svg{width:14px;height:14px;stroke:var(--brand);fill:none;stroke-width:1.9;}
+  /* ===== admin upload ===== */
+  .uploadgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:720px){.uploadgrid{grid-template-columns:1fr;}}
+  .drop{border:1.5px dashed var(--line);border-radius:8px;padding:16px;background:var(--surface-2);}
+  .drop input[type=file]{display:block;margin:12px 0;font-size:12.5px;width:100%;}
+  .colnote{font-size:12px;color:var(--ink-3);line-height:1.6;}
+  .colnote code{background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:11.5px;}
   .roles{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s4);margin-top:var(--s4);}
   @media(max-width:820px){.roles{grid-template-columns:1fr;}}
   .role{background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);padding:var(--s5);box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px;transition:box-shadow .12s,border-color .12s;}
@@ -315,8 +354,9 @@
           <h1>Form your project team, get it approved.</h1>
           <p class="lead">A single place for students to build a five-member team under the school rules, pick a faculty by branch, and track approval, and for faculty and admins to review and manage it all. Fast, private, and built to run for the whole batch at once.</p>
           <div class="cta">
-            <button class="btn pri hero" data-go="student">Get started</button>
-            <button class="btn hero" data-go="faculty">I'm faculty</button>
+            <button class="btn hero facultycool" data-go="faculty">I'm faculty<span class="arw">&rarr;</span></button>
+            <button class="btn pri hero" data-go="student">I'm a student</button>
+            <button class="btn hero" data-go="admin">Administrator</button>
           </div>
         </div>
         <div class="heroart">
@@ -389,6 +429,7 @@
           <button class="navitem active" data-stab="overview"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.9"/></svg>My group</button>
           <button class="navitem" data-stab="directory"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Find teammates</button>
           <button class="navitem" data-stab="faculty"><svg viewBox="0 0 24 24"><path d="M12 3L2 8l10 5 10-5-10-5z"/><path d="M6 10v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></svg>Faculty &amp; slots</button>
+          <button class="navitem" data-stab="chat"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Message guide <span id="stChatBadge" class="badge" style="display:none">0</span></button>
           <button class="navitem" data-stab="help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 3-3 3M12 17h.01"/></svg>Get help</button>
         </aside>
         <div class="dashmain">
@@ -442,6 +483,20 @@
           </div></div>
         </div>
 
+        <div id="stab-chat" class="stab hidden">
+        <div class="card"><div class="hd"><h3>Message your guide</h3><span class="cabinchip" id="stGuideCabin" style="display:none;margin-left:auto"><svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--brand);fill:none;stroke-width:1.9"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4"/></svg>Cabin <b id="stGuideCabinVal"></b></span></div>
+          <div class="bd">
+            <div id="stChatNoGuide" class="note info" style="display:none">Once your team has chosen a faculty (under <b>My group</b>), you can message them here to arrange a cabin visit.</div>
+            <div id="stChatWrap" style="display:none">
+              <p class="mini" id="stGuideLine" style="margin:0 0 10px"></p>
+              <div class="chatpane">
+                <div class="msgs" id="stMsgs"></div>
+                <div class="composer"><input class="input" id="stChatInput" placeholder="Ask when to come to the cabin…"><button class="btn pri" id="stChatSend">Send</button></div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+
         <div id="stab-help" class="stab hidden">
         <div class="card"><div class="hd"><h3>Need help? Contact admin</h3></div>
           <div class="bd">
@@ -487,9 +542,11 @@
           <div class="navlabel">Faculty</div>
           <button class="navitem active" data-ftab="groups"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h9"/></svg>Groups to review</button>
           <button class="navitem" data-ftab="students"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Student directory</button>
+          <button class="navitem" data-ftab="chat"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Messages <span id="facChatBadge" class="badge" style="display:none">0</span></button>
         </aside>
         <div class="dashmain">
-        <div class="pagehead"><div class="eyebrow">Faculty review</div><h1>Team &amp; student review</h1></div>
+        <div class="pagehead spread"><div><div class="eyebrow">Faculty review</div><h1>Team &amp; student review</h1></div>
+          <span class="cabinchip" id="facCabinChip" style="display:none"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4"/></svg>Cabin <b id="facCabinVal"></b></span></div>
 
         <div id="ftab-groups">
           <div class="toolbar">
@@ -513,6 +570,18 @@
           </div>
           <div class="scrollx"><table class="dtable"><thead><tr><th>Reg no.</th><th>Name</th><th>School</th><th>Type</th><th>Email</th></tr></thead><tbody id="facStuRows"></tbody></table></div>
           <div class="pager"><span class="count" id="facStuPage"></span><button class="btn sm" id="facStuPrev">Prev</button><button class="btn sm" id="facStuNext">Next</button></div>
+        </div>
+
+        <div id="ftab-chat" class="hidden">
+          <p class="mini" style="margin:0 0 12px">Message students whose team chose you — tell them when to drop by your cabin, or when not to.</p>
+          <div class="chatlayout">
+            <div class="threadlist" id="facThreads"></div>
+            <div class="chatpane">
+              <div class="ch" id="facChatHead"><span class="mini">Select a student to start messaging.</span></div>
+              <div class="msgs" id="facMsgs"><div class="chatempty">No conversation open. Pick a student on the left.</div></div>
+              <div class="composer"><input class="input" id="facChatInput" placeholder="Type a message…" disabled><button class="btn pri" id="facChatSend" disabled>Send</button></div>
+            </div>
+          </div>
         </div>
         </div></div>
       </div>
@@ -538,6 +607,7 @@
           <div class="navlabel">Administration</div>
           <button class="navitem active" data-atab="students"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.9"/></svg>Students</button>
           <button class="navitem" data-atab="faculty"><svg viewBox="0 0 24 24"><path d="M12 3L2 8l10 5 10-5-10-5z"/><path d="M6 10v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></svg>Faculty</button>
+          <button class="navitem" data-atab="upload"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>Upload data</button>
           <button class="navitem" data-atab="allocations"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>Allocations</button>
           <button class="navitem" data-atab="hashkeys"><svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 11-7.1 7.1 5 5 0 017.1-7.1zm0 0L15 8m0 0l3 3m-3-3l3-3"/></svg>Hashkeys</button>
           <button class="navitem" data-atab="queries"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Queries <span id="admQBadge" class="badge" style="display:none">0</span></button>
@@ -559,7 +629,33 @@
 
         <div id="atab-faculty" class="hidden">
           <div class="searchrow"><span class="mini" id="admFacCount"></span></div>
-          <div class="scrollx"><table class="dtable"><thead><tr><th>Name</th><th>Email</th><th>School</th><th>Slots (used / max)</th><th>Remaining</th><th>Password</th></tr></thead><tbody id="admFacRows"></tbody></table></div>
+          <div class="scrollx"><table class="dtable"><thead><tr><th>Name</th><th>Email</th><th>School</th><th>Cabin</th><th>Slots (used / max)</th><th>Remaining</th><th>Password</th></tr></thead><tbody id="admFacRows"></tbody></table></div>
+        </div>
+
+        <div id="atab-upload" class="hidden">
+          <div class="uploadgrid">
+            <div class="card"><div class="hd"><h3>Upload students</h3></div>
+              <div class="bd">
+                <div class="drop">
+                  <p class="mini" style="margin:0">Excel (<b>.xlsx</b>) or <b>.csv</b>. Replaces the student roster and updates the whole portal live.</p>
+                  <input type="file" id="upStuFile" accept=".xlsx,.csv,.tsv">
+                  <button class="btn pri" id="upStuBtn">Upload students</button>
+                </div>
+                <p class="colnote" style="margin-top:12px">Columns read: <code>reg</code>, <code>name</code>, <code>email</code>. School &amp; SCOPE/other are derived from the reg number. Students already registered keep their password.</p>
+                <div id="upStuMsg"></div>
+              </div></div>
+            <div class="card"><div class="hd"><h3>Upload faculty</h3></div>
+              <div class="bd">
+                <div class="drop">
+                  <p class="mini" style="margin:0">Excel (<b>.xlsx</b>) or <b>.csv</b>. Replaces the faculty list and updates live.</p>
+                  <input type="file" id="upFacFile" accept=".xlsx,.csv,.tsv">
+                  <button class="btn pri" id="upFacBtn">Upload faculty</button>
+                </div>
+                <p class="colnote" style="margin-top:12px">Columns read: <code>email</code>, <code>name</code>, <code>school</code>, <code>cabin</code>, <code>max_groups</code>. New faculty get an initial password shown on the <b>Faculty</b> tab; existing ones keep theirs.</p>
+                <div id="upFacMsg"></div>
+              </div></div>
+          </div>
+          <p class="mini" style="margin-top:14px;color:var(--ink-3)">Tip: the cabin number entered here is what students see when they message their guide.</p>
         </div>
 
         <div id="atab-allocations" class="hidden">
@@ -798,15 +894,16 @@ function consentPromptHtml(g){
   if(mine.consent==='declined')return '<div class="note bad" style="margin-top:10px">You declined this group. <button class="btn sm" data-consent="accept" style="margin-left:6px">Change to accept</button></div>';
   return '';
 }
+function cabinTag(c){return c?' <span class="cabinchip" style="padding:1px 8px"><svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:var(--brand);fill:none;stroke-width:1.9"><path d="M3 21h18M5 21V7l7-4 7 4v14M10 21v-4h4v4"/></svg>Cabin <b>'+esc(c)+'</b></span>':'';}
 function facultyPickerHtml(g){
-  if(g.status==='accepted')return '<div class="pickrow"><span class="lab2">Faculty</span><span class="assigned">Approved by '+esc(g.facultyName||'')+'</span></div>';
+  if(g.status==='accepted')return '<div class="pickrow"><span class="lab2">Faculty</span><span class="assigned">Approved by '+esc(g.facultyName||'')+'</span>'+cabinTag(g.facultyCabin)+'</div>';
   var isLeader=(g.leader===stReg);
   if(!isLeader){
     var t=g.requestedFacultyName?('Leader selected <b>'+esc(g.requestedFacultyName)+'</b>'):'Your team leader will choose the faculty';
-    return '<div class="pickrow"><span class="lab2">Faculty</span><span class="mini">'+t+'</span></div>';
+    return '<div class="pickrow"><span class="lab2">Faculty</span><span class="mini">'+t+'</span>'+(g.requestedFacultyName?cabinTag(g.requestedFacultyCabin):'')+'</div>';
   }
   if(!g.ready)return '<div class="pickrow"><span class="lab2">Faculty</span><span class="mini">All members must accept before the group can go to a faculty.</span></div>';
-  var status=g.requestedFacultyName?'<span class="mini">Request sent to <b>'+esc(g.requestedFacultyName)+'</b> · awaiting approval</span>':'<span class="mini">Pick a faculty, then press Choose faculty</span>';
+  var status=g.requestedFacultyName?'<span class="mini">Request sent to <b>'+esc(g.requestedFacultyName)+'</b> · awaiting approval</span>'+cabinTag(g.requestedFacultyCabin):'<span class="mini">Pick a faculty, then press Choose faculty</span>';
   return '<div class="pickrow"><span class="lab2">Select faculty</span><select class="sel fpick">'+facultyOptions(g.requestedFacultyId)+'</select><button class="btn sm pri" data-confirmfac="1">Choose faculty</button></div><div style="margin-top:7px">'+status+'</div>';
 }
 document.getElementById('stGroups').addEventListener('click',function(e){
@@ -904,9 +1001,10 @@ document.getElementById('qSend').onclick=function(){
 document.querySelectorAll('#view-student [data-stab]').forEach(function(t){t.onclick=function(){
   var v=t.getAttribute('data-stab');
   document.querySelectorAll('#view-student [data-stab]').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-stab')===v);});
-  ['overview','directory','faculty','help'].forEach(function(p){var el=document.getElementById('stab-'+p);if(el)el.classList.toggle('hidden',p!==v);});
+  ['overview','directory','faculty','chat','help'].forEach(function(p){var el=document.getElementById('stab-'+p);if(el)el.classList.toggle('hidden',p!==v);});
   if(v==='directory')loadStudentDir();
   if(v==='faculty')loadStudentFacDir();
+  if(v==='chat')loadStudentChat();
   if(v==='help')setSupportMail();
   window.scrollTo(0,0);
 };});
@@ -917,7 +1015,9 @@ document.querySelectorAll('#view-faculty [data-ftab]').forEach(function(t){t.onc
   var v=t.getAttribute('data-ftab');tabSwitch('view-faculty','data-ftab',v);
   document.getElementById('ftab-groups').classList.toggle('hidden',v!=='groups');
   document.getElementById('ftab-students').classList.toggle('hidden',v!=='students');
+  document.getElementById('ftab-chat').classList.toggle('hidden',v!=='chat');
   if(v==='students')loadFacStudents();
+  if(v==='chat')loadFacThreads();
 };});
 var facStuState={q:'',page:1,pages:1},facStuSeq=0;
 function loadFacStudents(){
@@ -940,8 +1040,9 @@ document.getElementById('facStuNext').onclick=function(){if(facStuState.page<fac
 document.getElementById('facSignin').onclick=function(){
   var email=document.getElementById('facEmail').value.trim(),password=document.getElementById('facPass').value;
   run(this,api('/api/faculty/login',{method:'POST',body:{email:email,password:password}}).then(function(r){
-    if(r.ok){facTok=r.body.token;saveSession({role:'faculty',token:facTok,name:r.body.name});setUser(r.body.name);
-      document.getElementById('facLogin').classList.add('hidden');document.getElementById('facDash').classList.remove('hidden');loadFac();}
+    if(r.ok){facTok=r.body.token;saveSession({role:'faculty',token:facTok,name:r.body.name,cabin:r.body.cabin});setUser(r.body.name);
+      setFacCabin(r.body.cabin);
+      document.getElementById('facLogin').classList.add('hidden');document.getElementById('facDash').classList.remove('hidden');loadFac();loadFacThreads();}
     else note(document.getElementById('facMsg'),'bad',esc(r.body.error));
   }));
 };
@@ -995,7 +1096,7 @@ document.getElementById('admSignin').onclick=function(){
 };
 document.querySelectorAll('#view-admin [data-atab]').forEach(function(t){t.onclick=function(){
   var v=t.getAttribute('data-atab');tabSwitch('view-admin','data-atab',v);
-  ['students','faculty','allocations','hashkeys','queries'].forEach(function(p){var el=document.getElementById('atab-'+p);if(el)el.classList.toggle('hidden',p!==v);});
+  ['students','faculty','upload','allocations','hashkeys','queries'].forEach(function(p){var el=document.getElementById('atab-'+p);if(el)el.classList.toggle('hidden',p!==v);});
   if(v==='queries')loadAdmQueries();
   if(v==='faculty')loadAdmFaculty();
   if(v==='students')loadAdmStudents();
@@ -1091,7 +1192,7 @@ function loadAdmFaculty(){api('/api/admin/faculty',{token:admTok}).then(function
   if(!r.ok)return;
   document.getElementById('admFacCount').textContent=r.body.rows.length+' faculty';
   document.getElementById('admFacRows').innerHTML=r.body.rows.map(function(f){
-    return '<tr><td>'+esc(f.name)+'</td><td class="mono">'+esc(f.email)+'</td><td>'+esc(f.school)+'</td><td>'+f.used+' / '+f.capacity+'</td><td><b style="color:'+(f.remaining>0?'var(--good)':'var(--ink-3)')+'">'+f.remaining+'</b></td><td class="mono">'+esc(f.initialPassword)+'</td></tr>';
+    return '<tr><td>'+esc(f.name)+'</td><td class="mono">'+esc(f.email)+'</td><td>'+esc(f.school)+'</td><td>'+(f.cabin?'<span class="mono">'+esc(f.cabin)+'</span>':'<span class="mini">—</span>')+'</td><td>'+f.used+' / '+f.capacity+'</td><td><b style="color:'+(f.remaining>0?'var(--good)':'var(--ink-3)')+'">'+f.remaining+'</b></td><td class="mono">'+esc(f.initialPassword)+'</td></tr>';
   }).join('');
 });}
 
@@ -1152,6 +1253,125 @@ function themeIcon(){tbtn.innerHTML=(theme==='dark')?SUN:MOON;}
 applyTheme(theme);themeIcon();
 tbtn.onclick=function(){theme=(theme==='dark')?'light':'dark';localStorage.setItem(TH,theme);applyTheme(theme);themeIcon();};
 
+/* ---------------- cabin + chat ---------------- */
+function setFacCabin(c){
+  var chip=document.getElementById('facCabinChip'),val=document.getElementById('facCabinVal');
+  if(c){val.textContent=c;chip.style.display='';}else chip.style.display='none';
+}
+function bubble(m,mineRole){
+  var mine=m.from===mineRole;
+  return '<div class="bubble '+(mine?'me':'them')+'">'+esc(m.body)+'<span class="ts">'+esc(m.atText||'')+'</span></div>';
+}
+function renderMsgs(el,msgs,mineRole){
+  el.innerHTML=(msgs&&msgs.length)?msgs.map(function(m){return bubble(m,mineRole);}).join(''):'<div class="chatempty">No messages yet — start the conversation.</div>';
+  el.scrollTop=el.scrollHeight;
+}
+
+/* --- student: chat with your guide --- */
+function loadStudentChat(){
+  if(!stTok)return;
+  return api('/api/student/chat',{token:stTok}).then(function(r){
+    if(!r.ok)return;
+    var noGuide=document.getElementById('stChatNoGuide'),wrap=document.getElementById('stChatWrap'),cab=document.getElementById('stGuideCabin');
+    if(!r.body.hasGuide){noGuide.style.display='';wrap.style.display='none';cab.style.display='none';setStChatBadge(0);return;}
+    noGuide.style.display='none';wrap.style.display='';
+    var f=r.body.faculty;
+    var when=r.body.status==='accepted'?'your approved guide':'the faculty your team applied to';
+    document.getElementById('stGuideLine').innerHTML='Chatting with <b>'+esc(f.name)+'</b>'+(f.school?' &middot; '+esc(f.school):'')+' — '+when+'.';
+    if(f.cabin){document.getElementById('stGuideCabinVal').textContent=f.cabin;cab.style.display='';}else cab.style.display='none';
+    renderMsgs(document.getElementById('stMsgs'),r.body.messages,'student');
+    setStChatBadge(0);
+  });
+}
+function sendStudentChat(){
+  var inp=document.getElementById('stChatInput');var text=inp.value.trim();if(!text)return;
+  run(document.getElementById('stChatSend'),api('/api/student/chat/send',{method:'POST',token:stTok,body:{body:text}}).then(function(r){
+    if(r.ok){inp.value='';renderMsgs(document.getElementById('stMsgs'),r.body.messages,'student');}
+    else toast(r.body.error);
+  }));
+}
+document.getElementById('stChatSend').onclick=sendStudentChat;
+document.getElementById('stChatInput').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();sendStudentChat();}});
+function setStChatBadge(n){var b=document.getElementById('stChatBadge');if(n>0){b.textContent=n;b.style.display='';}else b.style.display='none';}
+function pollStudentUnread(){if(!stTok)return;api('/api/student/chat/unread',{token:stTok}).then(function(r){if(!r.ok)return;
+  var open=!document.getElementById('stab-chat').classList.contains('hidden');
+  if(open&&r.body.unread>0){loadStudentChat();setStChatBadge(0);}else setStChatBadge(open?0:(r.body.unread||0));
+});}
+
+/* --- faculty: message threads with students who chose you --- */
+var facActiveReg=null;
+function loadFacThreads(){
+  if(!facTok)return;
+  return api('/api/faculty/threads',{token:facTok}).then(function(r){
+    if(!r.ok)return;
+    setFacChatBadge(r.body.unread||0);
+    var el=document.getElementById('facThreads');if(!el)return;
+    if(!r.body.threads.length){el.innerHTML='<div class="chatempty" style="padding:22px">No students yet. When a team chooses you, they show up here.</div>';return;}
+    el.innerHTML=r.body.threads.map(function(t){
+      var un=t.unread>0?'<span class="unreaddot">'+t.unread+'</span>':'';
+      var pv=t.lastBody?esc(t.lastBody):'<i>No messages yet</i>';
+      return '<button class="t'+(t.reg===facActiveReg?' active':'')+'" data-thread="'+esc(t.reg)+'"><span class="nm">'+esc(t.name)+un+'</span><span class="pv mono">'+esc(t.reg)+(t.teamId?' · '+esc(t.teamId):'')+'</span><span class="pv">'+pv+'</span></button>';
+    }).join('');
+    if(facActiveReg)openFacThread(facActiveReg,true);
+  });
+}
+function openFacThread(reg,quiet){
+  facActiveReg=reg;
+  document.querySelectorAll('#facThreads .t').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-thread')===reg);});
+  document.getElementById('facChatInput').disabled=false;document.getElementById('facChatSend').disabled=false;
+  return api('/api/faculty/chat?reg='+encodeURIComponent(reg),{token:facTok}).then(function(r){
+    if(!r.ok)return;
+    document.getElementById('facChatHead').innerHTML='<b>'+esc(r.body.name)+'</b> <span class="mini mono">'+esc(r.body.reg)+'</span>';
+    renderMsgs(document.getElementById('facMsgs'),r.body.messages,'faculty');
+    if(!quiet)setFacChatBadge(Math.max(0,(parseInt(document.getElementById('facChatBadge').textContent,10)||0)));
+  });
+}
+document.getElementById('facThreads').addEventListener('click',function(e){
+  var b=e.target.closest('[data-thread]');if(!b)return;openFacThread(b.getAttribute('data-thread'),true).then(loadFacThreads);
+});
+function sendFacChat(){
+  if(!facActiveReg)return;var inp=document.getElementById('facChatInput');var text=inp.value.trim();if(!text)return;
+  run(document.getElementById('facChatSend'),api('/api/faculty/chat/send',{method:'POST',token:facTok,body:{reg:facActiveReg,body:text}}).then(function(r){
+    if(r.ok){inp.value='';renderMsgs(document.getElementById('facMsgs'),r.body.messages,'faculty');loadFacThreads();}
+    else toast(r.body.error);
+  }));
+}
+document.getElementById('facChatSend').onclick=sendFacChat;
+document.getElementById('facChatInput').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();sendFacChat();}});
+function setFacChatBadge(n){var b=document.getElementById('facChatBadge');if(n>0){b.textContent=n;b.style.display='';}else b.style.display='none';}
+
+/* live chat polling while signed in (badges + open thread) */
+setInterval(function(){ if(stTok)pollStudentUnread(); if(facTok)loadFacThreads(); },7000);
+
+/* ---------------- admin: upload student / faculty data (Excel or CSV) ---------------- */
+function fileToBase64(file){return new Promise(function(resolve,reject){
+  var fr=new FileReader();
+  fr.onload=function(){var s=String(fr.result);var i=s.indexOf(',');resolve(i>=0?s.slice(i+1):s);};
+  fr.onerror=function(){reject(new Error('read failed'));};
+  fr.readAsDataURL(file);
+});}
+function doUpload(which){
+  var isStu=which==='students';
+  var fileEl=document.getElementById(isStu?'upStuFile':'upFacFile');
+  var msgEl=document.getElementById(isStu?'upStuMsg':'upFacMsg');
+  var btn=document.getElementById(isStu?'upStuBtn':'upFacBtn');
+  var f=fileEl.files&&fileEl.files[0];
+  if(!f){note(msgEl,'bad','Choose a .xlsx or .csv file first.');return;}
+  run(btn,fileToBase64(f).then(function(b64){
+    return api('/api/admin/upload-'+which,{method:'POST',token:admTok,body:{filename:f.name,dataBase64:b64}});
+  }).then(function(r){
+    if(r.ok){
+      if(isStu)note(msgEl,'ok','Loaded <b>'+r.body.total.toLocaleString()+'</b> students — '+r.body.brandNew+' new, '+r.body.preserved+' kept their login'+(r.body.skipped?', '+r.body.skipped+' rows skipped':'')+'. Portal updated live.');
+      else note(msgEl,'ok','Loaded <b>'+r.body.total.toLocaleString()+'</b> faculty'+(r.body.skipped?' ('+r.body.skipped+' rows skipped)':'')+'. Portal updated live.');
+      toast(isStu?'Student roster updated':'Faculty list updated');
+      fileEl.value='';
+      loadAdmStudents();loadAdmFaculty();
+    }else note(msgEl,'bad',esc(r.body.error||'Upload failed.')+(r.body.headers?'<div class="mini" style="margin-top:6px">Found columns: '+r.body.headers.map(esc).join(', ')+'</div>':''));
+  }).catch(function(){note(msgEl,'bad','Could not read that file.');}));
+}
+document.getElementById('upStuBtn').onclick=function(){doUpload('students');};
+document.getElementById('upFacBtn').onclick=function(){doUpload('faculty');};
+
 /* Enter submits every login form */
 onEnter(['stReg','stPass'],'stLoginBtn');
 onEnter(['facEmail','facPass'],'facSignin');
@@ -1168,9 +1388,9 @@ function restoreSession(){
     document.getElementById('stLogin').classList.add('hidden');document.getElementById('stApp').classList.remove('hidden');
     loadMyGroups();loadStudentFacDir();loadStudentDir();
     applyView('student');return true;}
-  if(s.role==='faculty'){facTok=s.token;setUser(s.name);
+  if(s.role==='faculty'){facTok=s.token;setUser(s.name);setFacCabin(s.cabin);
     document.getElementById('facLogin').classList.add('hidden');document.getElementById('facDash').classList.remove('hidden');
-    api('/api/faculty/groups',{token:facTok}).then(function(r){if(r.status===401)return;loadFac();});
+    api('/api/faculty/groups',{token:facTok}).then(function(r){if(r.status===401)return;loadFac();loadFacThreads();});
     applyView('faculty');return true;}
   if(s.role==='admin'){admTok=s.token;setUser('Administrator');
     document.getElementById('admLogin').classList.add('hidden');document.getElementById('admDash').classList.remove('hidden');

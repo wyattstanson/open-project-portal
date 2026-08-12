@@ -29,6 +29,7 @@ const engine = require('../engine.js');
 const vault = require('./crypto-vault.js');
 const dataset = require('./dataset.js');
 const store = require('./store.js');
+const xlsx = require('./xlsx-lite.js');
 
 const PORT = process.env.PORT || 4000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -50,7 +51,7 @@ function initialData() {
     const base = fs.existsSync(csv) ? dataset.loadFromCSV(csv, { groups: 8 }) : { students: {}, groups: [] };
     return {
       students: base.students, groups: base.groups, queries: [],
-      faculty: [{ email: 'teacher@domain', name: 'Dr. Demo Faculty', passHash: vault.hashPasswordSync('teach123'), capacity: 5, school: 'SCOPE' }],
+      faculty: [{ email: 'teacher@domain', name: 'Dr. Demo Faculty', passHash: vault.hashPasswordSync('teach123'), capacity: 5, school: 'SCOPE', cabin: 'SJT-201' }],
       admin: { username: 'admin', passHash: vault.hashPasswordSync('admin@123') },
     };
   }
@@ -88,7 +89,10 @@ function initialStudentPw(name) { return String(name).toLowerCase().replace(/[^a
 function initialFacultyPw(email) {
   if (email === 'teacher@domain') return 'teach123';
   const m = String(email).match(/^faculty0*(\d+)@/);
-  return m ? 'faculty' + m[1] : '';
+  if (m) return 'faculty' + m[1];
+  // uploaded faculty (arbitrary email): a stable, unguessable initial password the
+  // admin can read off the Faculty tab and hand over. Deterministic from the email.
+  return 'vit-' + vault.hashkeyFor('FACPW:' + String(email).toLowerCase()).slice(0, 8);
 }
 
 // ---- student registration & password rules (M4) ----
@@ -292,8 +296,8 @@ function groupView(g, opts) {
   const rf = rfIdx >= 0 ? db.faculty[rfIdx] : null;
   const asg = g.faculty ? db.faculty.find((f) => f.email === g.faculty) : null;
   return {
-    id: g.id, status: g.status, faculty: g.faculty, facultyName: asg ? asg.name : null, createdAt: g.createdAt,
-    requestedFaculty: g.requestedFaculty || null, requestedFacultyName: rf ? rf.name : null, requestedFacultyId: rfIdx >= 0 ? rfIdx : null,
+    id: g.id, status: g.status, faculty: g.faculty, facultyName: asg ? asg.name : null, facultyCabin: asg ? (asg.cabin || null) : null, createdAt: g.createdAt,
+    requestedFaculty: g.requestedFaculty || null, requestedFacultyName: rf ? rf.name : null, requestedFacultyCabin: rf ? (rf.cabin || null) : null, requestedFacultyId: rfIdx >= 0 ? rfIdx : null,
     leader: g.submittedBy, ready: groupReady(g),
     valid: v.valid, problems: v.problems, checks: constraintChecks(g.members),
     members: v.people.map((p) => {
@@ -310,6 +314,120 @@ function groupView(g, opts) {
   };
 }
 
+// ---------------------------------------------------------------- roster upload
+// Read the first non-empty value among a set of accepted header names (case-insensitive,
+// already lower-cased by the parser), so an admin's column can be "Reg", "Reg No.", etc.
+function pick(row, keys) { for (const k of keys) { const v = row[k]; if (v != null && String(v).trim() !== '') return String(v).trim(); } return ''; }
+
+// Turn parsed rows into the student map. Emails are encrypted at rest exactly like
+// the seed. A reg that already registered (set a self-password) keeps its login —
+// re-uploading the roster never wipes a student's account.
+function ingestStudents(rows) {
+  const out = {}; let brandNew = 0, preserved = 0, skipped = 0;
+  for (const row of rows) {
+    const reg = pick(row, ['reg', 'reg no', 'reg no.', 'regno', 'registration', 'registration number', 'registration no', 'register number']).toUpperCase().replace(/\s+/g, '');
+    const name = pick(row, ['name', 'student name', 'full name']);
+    const email = pick(row, ['email', 'email id', 'e-mail', 'mail', 'email address']);
+    if (!reg || !name) { skipped++; continue; }
+    const info = engine.schoolOf(reg.slice(2, 5), MAP);
+    const typeStr = pick(row, ['type', 'category', 'scope']);
+    const scope = info.known ? info.scope : /scope/i.test(typeStr);
+    const school = info.known ? info.school : (pick(row, ['school', 'branch', 'department']) || 'Unknown School');
+    const prev = db.students[reg];
+    out[reg] = {
+      reg, name, school, scope,
+      email: email ? vault.encrypt(email) : (prev ? prev.email : null),
+      emailHash: email ? vault.hashEmail(email) : (prev ? prev.emailHash : null),
+      passwordHash: prev ? prev.passwordHash : null,
+      changedPassword: prev ? !!prev.changedPassword : false,
+      passwordResetNotice: prev ? !!prev.passwordResetNotice : false,
+      pwFp: prev ? (prev.pwFp || null) : null,
+    };
+    if (prev && prev.changedPassword) preserved++; else brandNew++;
+  }
+  return { students: out, total: Object.keys(out).length, brandNew, preserved, skipped };
+}
+
+// Turn parsed rows into the faculty list. Cabin number is read here. An existing
+// faculty (same email) keeps their password; a new one gets the deterministic
+// initial password shown on the admin Faculty tab.
+async function ingestFaculty(rows) {
+  const list = []; const seen = new Set(); let skipped = 0;
+  for (const row of rows) {
+    const email = pick(row, ['email', 'email id', 'e-mail', 'mail', 'email address']).toLowerCase();
+    const name = pick(row, ['name', 'faculty name', 'full name', 'guide name']);
+    if (!email || !name) { skipped++; continue; }
+    if (seen.has(email)) { skipped++; continue; }
+    seen.add(email);
+    const school = pick(row, ['school', 'department', 'dept', 'branch']);
+    const cabin = pick(row, ['cabin', 'cabin no', 'cabin no.', 'cabin number', 'cabin_no', 'room', 'room no', 'room no.', 'room number']);
+    const capRaw = parseInt(pick(row, ['max_groups', 'capacity', 'slots', 'max groups', 'groups', 'limit']), 10);
+    const capacity = Number.isFinite(capRaw) ? Math.max(0, Math.min(50, capRaw)) : 3;
+    const prev = db.faculty.find((f) => f.email.toLowerCase() === email);
+    const passHash = prev ? prev.passHash : await vault.hashPassword(initialFacultyPw(email));
+    list.push({ email, name, school, capacity, cabin, passHash });
+  }
+  return { faculty: list, total: list.length, skipped };
+}
+
+// Swap in a freshly uploaded roster and rebuild every in-memory index so the change
+// is live immediately (no restart). Persisted through the store in the same call.
+function applyStudents(map) {
+  db.students = map;
+  store.replaceStudents(map);
+  lockKey(); reindex(); buildStudentArr(); computeSchoolLists(); rebuildPwFingerprints();
+}
+function applyFaculty(list) {
+  db.faculty = list;
+  store.replaceFaculty(list);
+}
+
+// ---------------------------------------------------------------- chat
+let msgSeq = 0;
+function nextMsgId() { return 'M' + Date.now().toString(36) + (++msgSeq).toString(36); }
+function threadKey(reg, facEmail) { return String(reg).toUpperCase() + '||' + String(facEmail).toLowerCase(); }
+// A student's guide is the faculty their team is with (accepted) or has applied to
+// (pending selection). That is who the chat connects them to.
+function guideFacultyOf(reg) {
+  const g = activeGroupOf(reg);
+  if (!g) return null;
+  const em = g.faculty || g.requestedFaculty;
+  if (!em) return null;
+  const f = db.faculty.find((x) => x.email === em);
+  return f ? { faculty: f, status: g.faculty ? 'accepted' : 'requested', team: g } : null;
+}
+function threadMessages(reg, facEmail) {
+  const key = threadKey(reg, facEmail);
+  return db.messages.filter((m) => m.thread === key).sort((a, b) => a.createdAt - b.createdAt)
+    .map((m) => ({ id: m.id, from: m.fromRole, body: m.body, at: m.createdAt, atText: istStamp(m.createdAt) }));
+}
+function addMessage(reg, facEmail, fromRole, body) {
+  const m = { id: nextMsgId(), thread: threadKey(reg, facEmail), reg: String(reg).toUpperCase(), facEmail: String(facEmail).toLowerCase(),
+    fromRole, body: String(body).slice(0, 2000), createdAt: Date.now(),
+    readByStudent: fromRole === 'student', readByFaculty: fromRole === 'faculty' };
+  db.messages.push(m); store.saveMessage(m);
+  return m;
+}
+// every reg that can chat with this faculty: members of teams that chose/were accepted
+// by them, plus anyone who already has a message thread with them.
+function facultyThreads(facEmail) {
+  const regs = new Set();
+  for (const g of db.groups) {
+    if (g.status === 'rejected') continue;
+    if (g.faculty === facEmail || g.requestedFaculty === facEmail) g.members.forEach((r) => regs.add(r));
+  }
+  for (const m of db.messages) if (m.facEmail === facEmail) regs.add(m.reg);
+  return [...regs].map((reg) => {
+    const st = db.students[reg] || {};
+    const msgs = db.messages.filter((m) => m.facEmail === facEmail && m.reg === reg);
+    const last = msgs.length ? msgs[msgs.length - 1] : null;
+    const unread = msgs.filter((m) => m.fromRole === 'student' && !m.readByFaculty).length;
+    const g = db.groups.find((x) => x.status !== 'rejected' && x.members.includes(reg) && (x.faculty === facEmail || x.requestedFaculty === facEmail));
+    return { reg, name: st.name || reg, teamId: g ? g.id : null, teamStatus: g ? g.status : null,
+      lastBody: last ? last.body : '', lastAt: last ? last.createdAt : 0, lastAtText: last ? istStamp(last.createdAt) : '', unread };
+  }).sort((a, b) => b.lastAt - a.lastAt || String(a.reg).localeCompare(String(b.reg)));
+}
+
 // ---------------------------------------------------------------- responses
 function sendJSON(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -320,6 +438,17 @@ function readBody(req) {
   return new Promise((resolve) => {
     let b = ''; req.on('data', (c) => { b += c; if (b.length > 5e6) req.destroy(); });
     req.on('end', () => { try { resolve(JSON.parse(b || '{}')); } catch (e) { resolve({}); } });
+  });
+}
+// A bigger, buffered JSON reader for file uploads (base64 payloads can be several MB).
+// Kept separate from readBody so ordinary login/API bodies stay capped small.
+function readJSONLarge(req, maxBytes) {
+  maxBytes = maxBytes || 48e6;
+  return new Promise((resolve) => {
+    const chunks = []; let len = 0; let tooBig = false;
+    req.on('data', (c) => { len += c.length; if (len > maxBytes) { tooBig = true; req.destroy(); return; } chunks.push(c); });
+    req.on('end', () => { if (tooBig) return resolve(null); try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch (e) { resolve(null); } });
+    req.on('error', () => resolve(null));
   });
 }
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' };
@@ -345,7 +474,7 @@ async function handle(req, res) {
     if (!f || !(await vault.verifyPassword(password, f.passHash))) return sendJSON(res, 401, { error: 'Invalid credentials.' });
     const tok = vault.newToken();
     sessions.set(tok, { role: 'faculty', email: f.email, name: f.name });
-    return sendJSON(res, 200, { token: tok, name: f.name, email: f.email, capacity: f.capacity, seatsUsed: seatsUsed(f.email) });
+    return sendJSON(res, 200, { token: tok, name: f.name, email: f.email, capacity: f.capacity, cabin: f.cabin || null, seatsUsed: seatsUsed(f.email) });
   }
 
   // ---- FACULTY view groups (real emails) ----
@@ -492,7 +621,7 @@ async function handle(req, res) {
     // slotsRemaining reflects live selections + acceptances, so picking a faculty
     // immediately reduces their available slots for everyone else.
     const rows = db.faculty.map((f, id) => ({
-      id, name: f.name, school: f.school, capacity: f.capacity,
+      id, name: f.name, school: f.school, capacity: f.capacity, cabin: f.cabin || null,
       slotsRemaining: Math.max(0, f.capacity - facultyLoad(f.email)),
     })).sort((a, b) => a.school.localeCompare(b.school) || b.slotsRemaining - a.slotsRemaining);
     return sendJSON(res, 200, { rows, branches: BRANCHES });
@@ -605,7 +734,7 @@ async function handle(req, res) {
     if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
     const rows = db.faculty.map((f) => {
       const used = facultyLoad(f.email);
-      return { email: f.email, name: f.name, school: f.school, capacity: f.capacity, used, remaining: Math.max(0, f.capacity - used), initialPassword: initialFacultyPw(f.email) };
+      return { email: f.email, name: f.name, school: f.school, capacity: f.capacity, cabin: f.cabin || null, used, remaining: Math.max(0, f.capacity - used), initialPassword: initialFacultyPw(f.email) };
     });
     return sendJSON(res, 200, { rows });
   }
@@ -838,6 +967,106 @@ async function handle(req, res) {
     return sendJSON(res, 200, { students: list });
   }
 
+  // ---- ADMIN: upload the student roster (.xlsx or .csv). Replaces the roster and
+  //      updates every index live. Columns: reg, name, email (school/type optional). ----
+  if (p === '/api/admin/upload-students' && req.method === 'POST') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const body = await readJSONLarge(req);
+    if (!body || !body.dataBase64) return sendJSON(res, 400, { error: 'No file received (or it was too large).' });
+    let parsed;
+    try { parsed = xlsx.parse(Buffer.from(body.dataBase64, 'base64'), body.filename || ''); }
+    catch (e) { return sendJSON(res, 400, { error: 'Could not read that file: ' + (e && e.message || 'unknown format') + '. Upload a .xlsx or .csv.' }); }
+    if (!parsed.rows.length) return sendJSON(res, 400, { error: 'That file had no data rows.' });
+    if (!parsed.headers.includes('reg') && !parsed.headers.some((h) => /^reg/.test(h) || h.includes('registration'))) {
+      return sendJSON(res, 400, { error: 'Missing a "reg" column. Expected headers include: reg, name, email.', headers: parsed.headers });
+    }
+    const r = ingestStudents(parsed.rows);
+    if (!r.total) return sendJSON(res, 400, { error: 'No valid students found (each row needs a reg and a name).' });
+    applyStudents(r.students);
+    return sendJSON(res, 200, { ok: true, total: r.total, brandNew: r.brandNew, preserved: r.preserved, skipped: r.skipped });
+  }
+
+  // ---- ADMIN: upload the faculty list (.xlsx or .csv). Replaces the faculty and
+  //      updates live. Columns: email, name, school, cabin, max_groups. ----
+  if (p === '/api/admin/upload-faculty' && req.method === 'POST') {
+    if (!adminAuth(req)) return sendJSON(res, 401, { error: 'Sign in as admin first.' });
+    const body = await readJSONLarge(req);
+    if (!body || !body.dataBase64) return sendJSON(res, 400, { error: 'No file received (or it was too large).' });
+    let parsed;
+    try { parsed = xlsx.parse(Buffer.from(body.dataBase64, 'base64'), body.filename || ''); }
+    catch (e) { return sendJSON(res, 400, { error: 'Could not read that file: ' + (e && e.message || 'unknown format') + '. Upload a .xlsx or .csv.' }); }
+    if (!parsed.rows.length) return sendJSON(res, 400, { error: 'That file had no data rows.' });
+    if (!parsed.headers.includes('email') && !parsed.headers.some((h) => h.includes('email') || h.includes('mail'))) {
+      return sendJSON(res, 400, { error: 'Missing an "email" column. Expected headers include: email, name, school, cabin, max_groups.', headers: parsed.headers });
+    }
+    const r = await ingestFaculty(parsed.rows);
+    if (!r.total) return sendJSON(res, 400, { error: 'No valid faculty found (each row needs an email and a name).' });
+    applyFaculty(r.faculty);
+    return sendJSON(res, 200, { ok: true, total: r.total, skipped: r.skipped });
+  }
+
+  // ---- STUDENT: chat with your guide (the faculty your team is with / applied to) ----
+  if (p === '/api/student/chat' && req.method === 'GET') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const guide = guideFacultyOf(sess.reg);
+    if (!guide) return sendJSON(res, 200, { hasGuide: false });
+    store.markThreadRead(threadKey(sess.reg, guide.faculty.email), 'student');
+    db.messages.forEach((m) => { if (m.thread === threadKey(sess.reg, guide.faculty.email)) m.readByStudent = true; });
+    return sendJSON(res, 200, {
+      hasGuide: true, status: guide.status,
+      faculty: { name: guide.faculty.name, school: guide.faculty.school || '', cabin: guide.faculty.cabin || null },
+      messages: threadMessages(sess.reg, guide.faculty.email),
+    });
+  }
+  if (p === '/api/student/chat/send' && req.method === 'POST') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as a student first.' });
+    const guide = guideFacultyOf(sess.reg);
+    if (!guide) return sendJSON(res, 409, { error: 'Pick a faculty for your team first — then you can message them.' });
+    const { body } = await readBody(req);
+    const text = String(body || '').trim();
+    if (!text) return sendJSON(res, 400, { error: 'Type a message first.' });
+    addMessage(sess.reg, guide.faculty.email, 'student', text);
+    return sendJSON(res, 200, { ok: true, messages: threadMessages(sess.reg, guide.faculty.email) });
+  }
+  // student's unread count (for the nav badge)
+  if (p === '/api/student/chat/unread' && req.method === 'GET') {
+    const sess = studentAuth(req); if (!sess) return sendJSON(res, 200, { unread: 0 });
+    const guide = guideFacultyOf(sess.reg);
+    if (!guide) return sendJSON(res, 200, { unread: 0 });
+    const key = threadKey(sess.reg, guide.faculty.email);
+    const unread = db.messages.filter((m) => m.thread === key && m.fromRole === 'faculty' && !m.readByStudent).length;
+    return sendJSON(res, 200, { unread });
+  }
+
+  // ---- FACULTY: chat threads with students on teams that chose them ----
+  if (p === '/api/faculty/threads' && req.method === 'GET') {
+    const sess = facultyAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as faculty first.' });
+    const threads = facultyThreads(sess.email);
+    return sendJSON(res, 200, { threads, unread: threads.reduce((n, t) => n + t.unread, 0) });
+  }
+  if (p === '/api/faculty/chat' && req.method === 'GET') {
+    const sess = facultyAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as faculty first.' });
+    const reg = String(url.searchParams.get('reg') || '').toUpperCase().replace(/\s+/g, '');
+    const st = db.students[reg]; if (!st) return sendJSON(res, 404, { error: 'Student not found.' });
+    store.markThreadRead(threadKey(reg, sess.email), 'faculty');
+    db.messages.forEach((m) => { if (m.thread === threadKey(reg, sess.email)) m.readByFaculty = true; });
+    return sendJSON(res, 200, { reg, name: st.name, messages: threadMessages(reg, sess.email) });
+  }
+  if (p === '/api/faculty/chat/send' && req.method === 'POST') {
+    const sess = facultyAuth(req); if (!sess) return sendJSON(res, 401, { error: 'Sign in as faculty first.' });
+    const { reg, body } = await readBody(req);
+    const target = String(reg || '').toUpperCase().replace(/\s+/g, '');
+    const st = db.students[target]; if (!st) return sendJSON(res, 404, { error: 'Student not found.' });
+    // only students who selected / were accepted by this faculty, or already in a thread
+    const canChat = db.groups.some((g) => g.status !== 'rejected' && g.members.includes(target) && (g.faculty === sess.email || g.requestedFaculty === sess.email))
+      || db.messages.some((m) => m.facEmail === sess.email && m.reg === target);
+    if (!canChat) return sendJSON(res, 403, { error: 'You can only message students whose team chose you.' });
+    const text = String(body || '').trim();
+    if (!text) return sendJSON(res, 400, { error: 'Type a message first.' });
+    addMessage(target, sess.email, 'faculty', text);
+    return sendJSON(res, 200, { ok: true, messages: threadMessages(target, sess.email) });
+  }
+
   if (p.startsWith('/api/')) return sendJSON(res, 404, { error: 'Unknown endpoint.' });
   return serveStatic(res, p);
 }
@@ -881,6 +1110,8 @@ function scheduleMidnightSweep() { setTimeout(sweepExpiredRequests, msUntilNextI
 async function boot() {
   await store.init(initialData);
   db = await store.loadAll();
+  if (!Array.isArray(db.messages)) db.messages = [];
+  msgSeq = db.messages.length;
   lockKey();
   reindex();
   buildStudentArr();
