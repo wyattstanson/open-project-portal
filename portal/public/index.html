@@ -405,7 +405,7 @@
         </div>
       </div>
       <p class="muted" style="font-size:12.5px;margin-top:24px;">
-        Demo access &mdash; student <b class="mono">24BCE2312</b>, first-time hashkey <b class="mono" id="demoHashkey">…</b> (you then set a password) &nbsp;&middot;&nbsp; faculty <b class="mono">teacher@domain</b> / <b class="mono">teach123</b> &nbsp;&middot;&nbsp; admin <b class="mono">admin</b> / <b class="mono">admin@123</b>. Synthetic data; not an official institute site.
+        First time here? Students sign in with the one-time hashkey issued by their proctor, then set a personal password. Faculty and administrators use the credentials provided to them. Student email addresses are encrypted at rest and never shown to other students.
       </p>
     </div></section>
 
@@ -547,8 +547,8 @@
         <div class="card authcard">
           <div class="hd"><h3>Faculty sign in</h3></div>
           <div class="bd">
-            <div class="field"><label>Staff email</label><input class="input mono" id="facEmail" value="teacher@domain" autocomplete="username"></div>
-            <div class="field"><label>Password</label><input class="input" id="facPass" type="password" value="teach123" autocomplete="current-password"></div>
+            <div class="field"><label>Staff email</label><input class="input mono" id="facEmail" placeholder="name@vit.ac.in" autocomplete="username"></div>
+            <div class="field"><label>Password</label><input class="input" id="facPass" type="password" placeholder="Your password" autocomplete="current-password"></div>
             <button class="btn pri" id="facSignin" style="width:100%">Sign in</button>
             <div id="facMsg"></div>
           </div>
@@ -612,8 +612,8 @@
         <div class="card authcard">
           <div class="hd"><h3>Administrator sign in</h3></div>
           <div class="bd">
-            <div class="field"><label>Username</label><input class="input mono" id="admUser" value="admin" autocomplete="username"></div>
-            <div class="field"><label>Password</label><input class="input" id="admPass" type="password" value="admin@123" autocomplete="current-password"></div>
+            <div class="field"><label>Username</label><input class="input mono" id="admUser" placeholder="Username" autocomplete="username"></div>
+            <div class="field"><label>Password</label><input class="input" id="admPass" type="password" placeholder="Your password" autocomplete="current-password"></div>
             <button class="btn pri" id="admSignin" style="width:100%">Sign in</button>
             <div id="admMsg"></div>
           </div>
@@ -1437,8 +1437,6 @@ function loadHeroStats(){
 }
 setInterval(function(){ if(!document.getElementById('view-landing').classList.contains('hidden'))loadHeroStats(); },15000);
 
-/* show the demo student's first-time hashkey on the landing */
-api('/api/registration-demo').then(function(r){var el=document.getElementById('demoHashkey');if(el)el.textContent=(r.body&&r.body.registered)?'(registered — reset via admin)':((r.body&&r.body.hashkey)||'—');});
 
 /* restore a saved session on load, so a refresh does not sign you out */
 function restoreSession(){

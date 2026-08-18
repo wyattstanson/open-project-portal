@@ -855,13 +855,6 @@ async function handle(req, res) {
     return sendJSON(res, 200, { ok: true, hashkey: vault.hashkeyFor(reg) });
   }
 
-  // ---- PUBLIC: the demo student's reg + hashkey, so the landing page can show a
-  //      working first-time-registration example (synthetic data only). ----
-  if (p === '/api/registration-demo' && req.method === 'GET') {
-    const reg = '24BCE2312'; const s = db.students[reg];
-    return sendJSON(res, 200, { reg, hashkey: s ? vault.hashkeyFor(reg) : null, registered: !!(s && s.changedPassword) });
-  }
-
   // ---- ADMIN: reset ALL allocations — wipe every team so a fresh round can start.
   //      Guarded: the caller must type the exact word RESETALL. ----
   if (p === '/api/admin/reset-all' && req.method === 'POST') {
