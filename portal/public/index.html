@@ -2,8 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Open Project Portal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Open Project Portal — VIT Team &amp; Faculty Allocation</title>
+<meta name="description" content="VIT Open Projects portal: students build a 5-member team (2 SCOPE + 3 schools), pick a faculty guide by branch, and track approval. Faculty review teams and manage cabin visits; admins oversee every account.">
+<meta name="theme-color" content="#0078d4">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<meta property="og:title" content="Open Project Portal — VIT">
+<meta property="og:description" content="Form your project team, pick a faculty guide, and track approval — all in one place.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230078d4'/%3E%3Ctext x='16' y='23' font-family='Segoe UI,Arial,sans-serif' font-size='21' font-weight='700' text-anchor='middle' fill='white'%3EO%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230078d4'/%3E%3Ctext x='16' y='23' font-family='Arial' font-size='21' font-weight='700' text-anchor='middle' fill='white'%3EO%3C/text%3E%3C/svg%3E">
 <style>
   /* ===== Azure / Fluent design tokens ===== */
   :root{
@@ -31,8 +40,10 @@
   :root[data-theme="dark"]{--bg:#1b1a19;--surface:#252423;--surface-2:#292827;--raise:#2b2a29;--nav:#201f1e;--ink:#fff;--ink-2:#c8c6c4;--ink-3:#979593;--line:#3b3a39;--line-2:#484644;--brand:#2899f5;--brand-2:#3aa0f3;--brand-3:#4dabf7;--brand-ink:#fff;--brand-wash:#0e2a42;--brand-wash-2:#12395c;--good:#54b054;--good-wash:#123212;--warn:#d9a400;--warn-wash:#3a2f00;--bad:#f1707b;--bad-wash:#3a1e21;--info-wash:#0e2a42;--shadow:0 .3px .9px rgba(0,0,0,.35),0 1.6px 3.6px rgba(0,0,0,.45);--shadow-2:0 1.2px 3.6px rgba(0,0,0,.4),0 6.4px 14.4px rgba(0,0,0,.55);}
 
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
+  html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden;}
   body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+  *{-webkit-tap-highlight-color:transparent;}
+  img{max-width:100%;height:auto;}
   h1,h2,h3,h4{margin:0;font-weight:600;}
   .mono{font-family:var(--mono);}
   .num{font-variant-numeric:tabular-nums;}
@@ -48,7 +59,9 @@
   /* ===== command bar (top) ===== */
   .topbar{position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:1px solid var(--line);height:48px;}
   .topbar .in{max-width:100%;height:48px;display:flex;align-items:center;gap:var(--s3);padding:0 var(--s4);}
-  .brand{display:flex;align-items:center;gap:10px;}
+  .brand{display:flex;align-items:center;gap:10px;background:none;border:none;padding:4px 6px 4px 0;margin:0;cursor:pointer;font-family:var(--sans);color:inherit;border-radius:var(--r2);}
+  .brand:hover{opacity:.85;}
+  .brand:focus-visible{outline:2px solid var(--brand);outline-offset:2px;}
   .brand .mk{width:28px;height:28px;border-radius:var(--r);background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;}
   .brand .nm{font-size:15px;font-weight:600;letter-spacing:.01em;}
   .brand .nm small{display:none;}
@@ -321,6 +334,15 @@
     transition:opacity .18s,transform .18s;z-index:60;}
   #toast.show{opacity:1;transform:translate(-50%,0);}
 
+  /* footer */
+  .sitefoot{border-top:1px solid var(--line);background:var(--surface);margin-top:var(--s7);}
+  .sitefoot .in{max-width:1180px;margin:0 auto;padding:22px var(--s4);display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;font-size:12.5px;color:var(--ink-3);}
+  .sitefoot a{color:var(--ink-2);text-decoration:none;}
+  .sitefoot a:hover{color:var(--brand);text-decoration:underline;}
+  .sitefoot .sep{color:var(--line-2);}
+  .sitefoot .foot-links{display:flex;flex-wrap:wrap;gap:8px 16px;margin-left:auto;}
+  @media(max-width:560px){.sitefoot .foot-links{margin-left:0;width:100%;}}
+
   /* smooth view fade */
   @media(prefers-reduced-motion:no-preference){
     main>section:not(.hidden){animation:fade .2s ease;}
@@ -332,10 +354,10 @@
 </head>
 <body>
   <header class="topbar"><div class="in">
-    <div class="brand">
+    <button class="brand" data-go="landing" title="Go to home" aria-label="Open Project Portal — home">
       <div class="mk">O</div>
       <div class="nm">Open Project Portal<small>Team &amp; Faculty Allocation</small></div>
-    </div>
+    </button>
     <div class="right">
       <span class="userchip hidden" id="userchip"><span class="av" id="userav"></span><span id="username"></span></span>
       <button class="btn sm ghost" id="theme" title="Toggle theme" aria-label="Toggle theme">Theme</button>
@@ -680,6 +702,18 @@
       </div>
     </section>
   </main>
+  <footer class="sitefoot"><div class="in">
+    <span>&copy; <span id="year">2026</span> Open Project Portal &middot; VIT</span>
+    <span class="sep">|</span>
+    <a href="mailto:openproject.helpdesk@vitstudent.ac.in" id="footMail">openproject.helpdesk@vitstudent.ac.in</a>
+    <nav class="foot-links" aria-label="Footer">
+      <a href="#landing" data-go="landing">Home</a>
+      <a href="#student" data-go="student">Student</a>
+      <a href="#faculty" data-go="faculty">Faculty</a>
+      <a href="#admin" data-go="admin">Admin</a>
+      <a href="mailto:openproject.helpdesk@vitstudent.ac.in?subject=Open%20Project%20portal%20issue">Report an issue</a>
+    </nav>
+  </div></footer>
   <div id="toast"></div>
 
 <script>
@@ -707,13 +741,19 @@ function setUser(name){
 var VIEWS=['landing','student','faculty','admin'];
 function applyView(v){if(VIEWS.indexOf(v)<0)v='landing';
   VIEWS.forEach(function(x){document.getElementById('view-'+x).classList.toggle('hidden',x!==v);});
+  setTitle(v);
   if(v==='landing'){setUser(null);loadHeroStats();}
   if(v==='student'&&stTok){loadMyGroups();loadStudentFacDir();}
   window.scrollTo(0,0);
 }
 function show(v){applyView(v);if(('#'+v)!==location.hash)history.pushState({v:v},'','#'+v);}
 window.addEventListener('popstate',function(){applyView((location.hash||'#landing').slice(1));});
-document.querySelectorAll('[data-go]').forEach(function(b){b.onclick=function(){show(b.getAttribute('data-go'));};});
+document.querySelectorAll('[data-go]').forEach(function(b){b.onclick=function(e){if(e&&e.preventDefault)e.preventDefault();show(b.getAttribute('data-go'));};});
+/* current-year in the footer */
+(function(){var y=document.getElementById('year');if(y)y.textContent=new Date().getFullYear();})();
+/* per-view document title, so tabs/bookmarks/history read clearly */
+var TITLES={landing:'Open Project Portal — VIT Team & Faculty Allocation',student:'Student · Open Project Portal',faculty:'Faculty · Open Project Portal',admin:'Admin · Open Project Portal'};
+function setTitle(v){document.title=TITLES[v]||TITLES.landing;}
 
 /* persistent session so a refresh does not log you out */
 /* login is kept in sessionStorage (a per-session store), so it ends when the browser

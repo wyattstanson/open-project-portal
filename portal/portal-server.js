@@ -455,7 +455,12 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
 function serveStatic(res, pathname) {
   const rel = pathname === '/' ? '/index.html' : pathname;
   const file = path.join(PUBLIC, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
-  if (!file.startsWith(PUBLIC) || !fs.existsSync(file)) { res.writeHead(404); return res.end('Not found'); }
+  if (!file.startsWith(PUBLIC) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    // styled 404 for any unknown non-API route
+    const f404 = path.join(PUBLIC, '404.html');
+    if (fs.existsSync(f404)) { res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(fs.readFileSync(f404)); }
+    res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found');
+  }
   res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
   res.end(fs.readFileSync(file));
 }
